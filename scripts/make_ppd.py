@@ -5,10 +5,11 @@ Generate cups/LabelPrinter.ppd.
 Written from scratch rather than adapted from the vendor PPD so we control the
 media list and the filter chain. Run after changing LABEL_SIZES:
 
-    python3 scripts/make_ppd.py
+    python3 scripts/make_ppd.py [output.ppd]
 """
 
 import math
+import sys
 from pathlib import Path
 
 DPI = 203
@@ -61,6 +62,9 @@ HEADER = '''*PPD-Adobe: "4.3"
 *cupsManualCopies: False
 *cupsModelNumber: 20
 *cupsFilter: "application/vnd.cups-raster 0 rastertotspl"
+*% Tells CUPS what raster iOS may send us, so the queue advertises itself as
+*% AirPrint-capable: 8-bit greyscale at 203dpi, no duplex.
+*cupsUrfSupported: "V1.4,W8,RS203,DM1,CP1"
 
 *OpenGroup: General/General
 '''
@@ -158,13 +162,19 @@ def build():
     return "".join(parts)
 
 
-def main():
-    dest = Path(__file__).resolve().parent.parent / "cups" / "LabelPrinter.ppd"
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+
+    if argv:
+        dest = Path(argv[0])
+    else:
+        dest = Path(__file__).resolve().parent.parent / "cups" / "LabelPrinter.ppd"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(build())
 
     # Sanity check the geometry our filter will be handed.
     w, h = 288, 432
-    print(f"wrote {dest.relative_to(dest.parent.parent)}")
+    print(f"wrote {dest}")
     print(f"  default media {DEFAULT_SIZE}: {w}x{h}pt -> "
           f"{round(w / 72 * DPI)}x{round(h / 72 * DPI)} dots @ {DPI}dpi -> "
           f"{math.ceil(w * 25.4 / 72)}x{math.ceil(h * 25.4 / 72)}mm")

@@ -1,0 +1,43 @@
+[Unit]
+Description=Family label print server
+Documentation=https://github.com/mmoniz/printer-server
+After=network-online.target cups.service
+Wants=network-online.target
+Requires=cups.service
+
+[Service]
+Type=simple
+User=labelserver
+Group=labelserver
+WorkingDirectory=/opt/labelserver
+Environment=LABELSERVER_QUEUE=labels
+Environment=PYTHONUNBUFFERED=1
+
+# Port 80 so nobody has to remember a port number. CAP_NET_BIND_SERVICE lets an
+# unprivileged user bind it without running the whole app as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+ExecStart=/opt/labelserver/venv/bin/python -m gunicorn \
+    --workers 2 --threads 4 --timeout 120 \
+    --bind 0.0.0.0:80 \
+    --access-logfile - --error-logfile - \
+    "labelserver.app:create_app()"
+
+Restart=always
+RestartSec=5
+
+# The app only ever reads its own directory and talks to CUPS.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Talking to cupsd goes through this socket.
+ReadWritePaths=/run/cups
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

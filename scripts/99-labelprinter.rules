@@ -1,0 +1,18 @@
+# Keep the label printer awake and reachable.
+#
+# Cheap USB thermal printers commonly let the host suspend them while idle and
+# then fail to wake up for the next job, which shows up as a queue that accepts
+# a label and never prints it. Disabling autosuspend for printer-class devices
+# costs nothing here -- the Pi is powered anyway.
+
+ACTION=="add", SUBSYSTEM=="usb", ATTR{bDeviceClass}=="00", \
+  ATTRS{bInterfaceClass}=="07", TEST=="power/control", \
+  ATTR{power/control}="on"
+
+# Printer-class interfaces, matched directly.
+ACTION=="add", SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:0701*", \
+  TEST=="power/control", ATTR{power/control}="on"
+
+# Make the raw device group-writable by lp so CUPS and our test script can
+# both reach it without root.
+SUBSYSTEM=="usblp", GROUP="lp", MODE="0660"

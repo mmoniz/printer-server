@@ -119,14 +119,20 @@ exists exactly once and everything inherits it.
 
 ## Milestones
 
+Everything that can be built and tested without the Pi is done. What remains
+all requires hardware in hand.
+
 1. ~~Identify the printer and its language~~ — **done, byte-verified**
-2. **Pi base setup** — OS, wifi, static DHCP reservation, `labels.local` mDNS
-3. **Raw print path** — pipe a known-good TSPL file straight to `/dev/usb/lp0`
-   and confirm a correctly-sized label comes out. Tunes GAP and origin.
-4. **CUPS + our filter** — install PPD + `rastertotspl.py`, print from a Mac
-5. **AirPrint** — Avahi records, print from an iPhone share sheet
-6. **Web app** — upload → normalize → preview → print
-7. **Hardening** — reboot test, then the reliability list below
+2. ~~Write the filter, PPD and install automation~~ — **done**
+3. ~~Web app: upload → normalize → preview → print~~ — **done**
+4. **Pi base setup** — OS, wifi, static DHCP reservation, `labels.local` mDNS
+5. **Raw print path** — `scripts/testprint.sh --raw` writes TSPL straight to
+   `/dev/usb/lp0`. Confirms the printer works and tunes `GAP` and the origin.
+6. **Run `scripts/install.sh`** — queue, filter, AirPrint record, web service
+7. **Print from a Mac, then an iPhone** — proves CUPS sharing and Avahi
+8. **Hardening** — reboot test, then the reliability list above
+
+Steps 4-8 are a single evening once the Pi is out of the drawer.
 
 ## Reliability details
 

@@ -29,6 +29,9 @@
 *cupsManualCopies: False
 *cupsModelNumber: 20
 *cupsFilter: "application/vnd.cups-raster 0 rastertotspl"
+*% Tells CUPS what raster iOS may send us, so the queue advertises itself as
+*% AirPrint-capable: 8-bit greyscale at 203dpi, no duplex.
+*cupsUrfSupported: "V1.4,W8,RS203,DM1,CP1"
 
 *OpenGroup: General/General
 *OpenUI *PageSize/Media Size: PickOne
