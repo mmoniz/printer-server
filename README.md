@@ -100,6 +100,21 @@ If a change ever breaks printer compatibility, those tests fail loudly.
 | `cups/LabelPrinter.ppd` | Generated — edit `scripts/make_ppd.py`. |
 | `scripts/install.sh` | One-shot Pi setup. |
 | `scripts/testprint.sh` | Test label, optionally bypassing CUPS entirely. |
+| `.claude/skills/` | Component guides — see below. |
+
+## Component guides
+
+Each non-obvious component has a skill under `.claude/skills/`, holding the
+reasoning and the traps that are not visible from the code alone. Claude Code
+picks these up automatically; they read fine as plain Markdown too.
+
+| Skill | Covers |
+|---|---|
+| `tspl-printer-protocol` | The wire format, the inverted bitmap, row padding, golden fixtures |
+| `label-normalization` | Finding a label on a carrier page, the detection constants |
+| `cups-print-chain` | PPD generation, the PPD/filter contract, AirPrint discovery |
+| `label-web-app` | Routes, the preview-then-print flow, testing against stubbed CUPS |
+| `pi-deployment` | Installing, the hardware failure modes, tuning against real stock |
 
 ## Fitting labels to 4x6
 
