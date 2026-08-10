@@ -255,3 +255,14 @@ def test_explain_translates_cups_errors():
     assert "rejecting jobs" in printing._explain(
         "lp: Destination labels is not accepting jobs.", "labels")
     assert printing._explain("", "labels")  # never returns empty
+
+
+def test_unknown_mode_falls_back_to_auto(client, letter_with_label):
+    """A hand-crafted form post must not 500 the server."""
+    resp = client.post(
+        "/upload",
+        data={"label": (io.BytesIO(letter_with_label), "l.pdf"), "mode": "wat"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 302
+    assert "/review/" in resp.headers["Location"]

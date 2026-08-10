@@ -11,6 +11,7 @@ print, keyed by a random token, and expire on their own.
 
 from __future__ import annotations
 
+import io
 import os
 import secrets
 import time
@@ -121,7 +122,11 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
                   "Upload a PDF or an image.", "error")
             return redirect(url_for("index"))
 
-        mode = Mode(request.form.get("mode", Mode.AUTO.value))
+        try:
+            mode = Mode(request.form.get("mode", Mode.AUTO.value))
+        except ValueError:
+            mode = Mode.AUTO
+
         data = upload_file.read()
 
         try:
@@ -156,7 +161,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
         pending = store.get(token)
         if pending is None:
             abort(404)
-        return send_file(_bytes_io(pending.preview), mimetype="image/png")
+        return send_file(io.BytesIO(pending.preview), mimetype="image/png")
 
     @app.post("/print/<token>")
     def do_print(token):
@@ -214,12 +219,6 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
         return redirect(url_for("index")), 302
 
     return app
-
-
-def _bytes_io(data: bytes):
-    import io
-
-    return io.BytesIO(data)
 
 
 app = create_app(os.environ.get("LABELSERVER_QUEUE", printing.DEFAULT_QUEUE))
