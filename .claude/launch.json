@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "labelserver",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "flask", "--app", "labelserver.app", "run",
+                      "--port", "8080", "--debug"],
+      "port": 8080
+    }
+  ]
+}
