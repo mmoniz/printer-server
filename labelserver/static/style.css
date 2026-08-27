@@ -1,0 +1,270 @@
+/* Deliberately small and dependency-free: this is served by a Pi 2 to phones
+   on the sofa, so it should work on a slow link and in either colour scheme. */
+
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #1c1f23;
+  --muted: #626b76;
+  --line: #dde1e6;
+  --accent: #1668dc;
+  --accent-text: #ffffff;
+  --ok: #17794a;
+  --bad: #b3261e;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c;
+    --card: #1e2228;
+    --text: #e8eaed;
+    --muted: #9aa4b1;
+    --line: #2f353d;
+    --accent: #4c94ff;
+    --accent-text: #06121f;
+    --ok: #4ec98a;
+    --bad: #ff8a80;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+
+.brand {
+  font-weight: 650;
+  font-size: 1.1rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+/* --- upload ---------------------------------------------------------- */
+
+.dropzone {
+  display: block;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.dropzone:hover, .dropzone.over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.dropzone input { display: none; }
+
+.dropzone-text strong { display: block; }
+
+.dropzone-text small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.modes {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.modes legend {
+  padding: 0 0 .5rem;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.mode {
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.mode input { margin-top: .35rem; flex: none; }
+.mode small { display: block; color: var(--muted); }
+
+/* --- preview --------------------------------------------------------- */
+
+.summary {
+  margin: -.5rem 0 0;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+}
+
+.preview img {
+  max-width: 100%;
+  /* White backing so a label with transparent areas still reads correctly. */
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.preview-caption { color: var(--muted); font-size: .8rem; }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+.controls input[type="number"] { width: 5rem; }
+.controls input[type="range"] { width: 11rem; }
+
+input[type="number"] {
+  padding: .45rem .55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* --- buttons --------------------------------------------------------- */
+
+button, .secondary {
+  font: inherit;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 0;
+  padding: .7rem 1.2rem;
+  font-weight: 600;
+}
+
+.primary:disabled { opacity: .5; cursor: not-allowed; }
+
+.secondary {
+  color: var(--muted);
+  text-decoration: none;
+  padding: .7rem 0;
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 0;
+  font-size: .9rem;
+}
+
+/* --- jobs and status ------------------------------------------------- */
+
+.jobs { list-style: none; margin: 0; padding: 0; }
+
+.jobs li {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.jobs li:first-child { border-top: 0; }
+.job-id { font-variant-numeric: tabular-nums; }
+.job-meta { color: var(--muted); font-size: .85rem; margin-right: auto; }
+
+.flash {
+  margin: 0;
+  padding: .75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.flash.error { border-color: var(--bad); color: var(--bad); }
+.flash.success { border-color: var(--ok); color: var(--ok); }
+
+.hint { color: var(--muted); font-size: .85rem; margin: 0; }
+
+.warn {
+  margin: 0;
+  padding: .7rem .9rem;
+  border-radius: 9px;
+  font-size: .88rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+  font-size: .85rem;
+}
+
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }

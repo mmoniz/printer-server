@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="card" method="post" action="{{ url_for('upload') }}"
+      enctype="multipart/form-data" id="upload-form">
+
+  <label class="dropzone" id="dropzone">
+    <input type="file" name="label" id="file-input"
+           accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.webp" required>
+    <span class="dropzone-text">
+      <strong>Choose a label</strong>
+      <small id="file-name">PDF or photo &middot; drag one here</small>
+    </span>
+  </label>
+
+  <fieldset class="modes">
+    <legend>How should it be fitted?</legend>
+
+    <label class="mode">
+      <input type="radio" name="mode" value="auto" checked>
+      <span><strong>Automatic</strong>
+        <small>Finds the label on the page and crops to it. Use this.</small>
+      </span>
+    </label>
+
+    <label class="mode">
+      <input type="radio" name="mode" value="crop">
+      <span><strong>Always crop</strong>
+        <small>Trim every blank edge, even on a label-sized page.</small>
+      </span>
+    </label>
+
+    <label class="mode">
+      <input type="radio" name="mode" value="fit">
+      <span><strong>Whole page</strong>
+        <small>Shrink the entire page onto the label. Nothing is cut off.</small>
+      </span>
+    </label>
+  </fieldset>
+
+  <button type="submit" class="primary">Preview label</button>
+</form>
+
+{% if jobs %}
+<section class="card">
+  <h2>Printing now</h2>
+  <ul class="jobs">
+    {% for job in jobs %}
+    <li>
+      <span class="job-id">{{ job.id }}</span>
+      <span class="job-meta">{{ job.user }} &middot; {{ job.size|int|kb }}</span>
+      <form method="post" action="{{ url_for('cancel', job_id=job.id) }}">
+        <button type="submit" class="link-button">Cancel</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<script>
+// Show the chosen filename, and accept drag-and-drop onto the whole box.
+const input = document.getElementById('file-input');
+const name = document.getElementById('file-name');
+const zone = document.getElementById('dropzone');
+
+input.addEventListener('change', () => {
+  if (input.files.length) name.textContent = input.files[0].name;
+});
+
+['dragenter', 'dragover'].forEach(evt =>
+  zone.addEventListener(evt, e => { e.preventDefault(); zone.classList.add('over'); }));
+
+['dragleave', 'drop'].forEach(evt =>
+  zone.addEventListener(evt, e => { e.preventDefault(); zone.classList.remove('over'); }));
+
+zone.addEventListener('drop', e => {
+  if (e.dataTransfer.files.length) {
+    input.files = e.dataTransfer.files;
+    name.textContent = e.dataTransfer.files[0].name;
+  }
+});
+</script>
+{% endblock %}

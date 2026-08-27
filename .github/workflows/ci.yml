@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # matches Raspberry Pi OS Bookworm
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install CUPS tooling
+        # cupstestppd validates the PPD; the rest of the suite stubs CUPS out.
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cups-ppdc
+
+      - name: Run tests
+        run: pytest -v
+
+      - name: Check shell scripts
+        run: |
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck -S warning scripts/*.sh
+
+      - name: Check the PPD is not stale
+        run: |
+          python3 scripts/make_ppd.py
+          git diff --exit-code cups/LabelPrinter.ppd

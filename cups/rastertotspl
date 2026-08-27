@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""
+CUPS filter: application/vnd.cups-raster -> TSPL, for the generic 4x6 thermal
+label printer.
+
+Called by cupsd as:
+    rastertotspl job-id user title copies options [file]
+
+Raster arrives on stdin (or the named file); printer bytes go to stdout.
+Diagnostics go to stderr, where cupsd picks them up.
+"""
+
+import sys
+
+sys.path.insert(0, "/usr/local/lib/labelserver")
+
+from labelserver import tspl  # noqa: E402
+
+
+def main(argv):
+    if len(argv) not in (6, 7):
+        sys.stderr.write(
+            "ERROR: usage: %s job-id user title copies options [file]\n" % argv[0]
+        )
+        return 1
+
+    try:
+        copies = int(argv[4])
+    except ValueError:
+        copies = 1
+
+    settings = tspl.Settings.from_cups_options(argv[5], copies)
+
+    if len(argv) == 7:
+        with open(argv[6], "rb") as fh:
+            raster = fh.read()
+    else:
+        raster = sys.stdin.buffer.read()
+
+    try:
+        pages = tspl.convert(raster, settings, sys.stdout.buffer, sys.stderr.buffer)
+    except tspl.RasterError as exc:
+        sys.stderr.write("ERROR: %s\n" % exc)
+        return 1
+
+    if pages == 0:
+        sys.stderr.write("ERROR: no printable pages in job\n")
+        return 1
+
+    sys.stderr.write("INFO: Finished %d page(s).\n" % pages)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

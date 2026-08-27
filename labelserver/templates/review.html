@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Preview &middot; Label Printer{% endblock %}
+
+{% block content %}
+<section class="card review">
+  <h2>{{ pending.filename }}</h2>
+  <p class="summary">{{ pending.summary }}</p>
+
+  {% if not pending.label_shaped %}
+  <p class="warn">
+    This does not look like a 4&times;6 label, so the crop may be wrong.
+    Check the preview &mdash; if it looks off, go back and try
+    <strong>Whole page</strong>.
+  </p>
+  {% endif %}
+
+  <div class="preview">
+    <img src="{{ url_for('preview', token=token) }}"
+         alt="Preview of the label as it will print">
+    <span class="preview-caption">4&times;6 in &middot; 203 dpi</span>
+  </div>
+
+  <form method="post" action="{{ url_for('do_print', token=token) }}">
+    <div class="controls">
+      <label>
+        Copies
+        <input type="number" name="copies" value="1" min="1"
+               max="{{ max_copies }}">
+      </label>
+
+      <label>
+        Darkness
+        <input type="range" name="darkness" min="0" max="15" value="6"
+               oninput="this.nextElementSibling.value = this.value">
+        <output>6</output>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="primary" {{ 'disabled' if not ready }}>
+        Print
+      </button>
+      <a class="secondary" href="{{ url_for('index') }}">Start over</a>
+    </div>
+
+    {% if not ready %}
+    <p class="hint">The printer is not ready, so printing is disabled.</p>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

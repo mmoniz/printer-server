@@ -1,0 +1,16 @@
+[Unit]
+Description=Disable wifi power saving
+# A sleeping USB wifi dongle takes the whole print server off the network, and
+# it only comes back when something on the Pi sends traffic outward. Turning
+# power saving off is the difference between "it works" and "it works until
+# nobody has used it for ten minutes".
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for dev in /sys/class/net/wl*; do [ -e "$dev" ] && /sbin/iw dev "$(basename "$dev")" set power_save off || true; done'
+
+[Install]
+WantedBy=multi-user.target
