@@ -18,8 +18,13 @@ Environment=PYTHONUNBUFFERED=1
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
+# Exactly one worker, not a load-balancing knob: PendingStore is a plain
+# in-process dict (see the label-web-app skill for why), so a second worker
+# process would have its own empty copy. An upload landing in worker A's
+# memory and the browser's preview request landing on worker B is a 404 --
+# concurrency within a worker comes from --threads instead.
 ExecStart=/opt/labelserver/venv/bin/python -m gunicorn \
-    --workers 2 --threads 4 --timeout 120 \
+    --workers 1 --threads 4 --timeout 120 \
     --bind 0.0.0.0:80 \
     --access-logfile - --error-logfile - \
     "labelserver.app:create_app()"

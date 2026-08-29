@@ -46,6 +46,18 @@ In memory on purpose: the Pi boots from an SD card, and cards die from write
 churn. A label nobody printed within half an hour is not worth persisting. A
 token is consumed on successful print so a refresh cannot silently reprint.
 
+This is also why `labelserver.service` runs gunicorn with exactly one
+worker. Each worker is a separate OS process with its own `create_app()`
+call and therefore its own empty `PendingStore` -- a second worker doesn't
+share it, doesn't get told about it, nothing. An upload landing on worker A
+and the browser's `GET /preview/<token>.png` landing on worker B (there's no
+affinity between requests on different connections) is a 404 with no error
+in the logs, which reads as "the preview is just broken" rather than what it
+actually is. If this app ever needs more concurrency than `--threads`
+provides within one process, the store needs to move to something shared
+(disk, sqlite, whatever) first -- turning up `--workers` alone silently
+reintroduces this bug.
+
 ## Talking to CUPS
 
 `printing.py` shells out to `lp`, `lpstat` and `cancel` rather than using a CUPS
