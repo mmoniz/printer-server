@@ -21,9 +21,10 @@ from threading import Lock
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    send_file, url_for)
 
-from . import normalize, printing
+from . import normalize, printing, urlfetch
 from .normalize import Mode, NormalizeError
 from .printing import PrintError
+from .urlfetch import FetchError
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 PENDING_TTL_SECONDS = 30 * 60
@@ -112,11 +113,22 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
     @app.post("/upload")
     def upload():
         upload_file = request.files.get("label")
-        if upload_file is None or not upload_file.filename:
-            flash("Choose a file first.", "error")
+        url = request.form.get("url", "").strip()
+
+        if upload_file is not None and upload_file.filename:
+            filename = upload_file.filename
+            data = upload_file.read()
+        elif url:
+            try:
+                data, filename = urlfetch.fetch_url(url, MAX_UPLOAD_BYTES)
+            except FetchError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("index"))
+        else:
+            flash("Choose a file, or paste a link to one, first.", "error")
             return redirect(url_for("index"))
 
-        suffix = os.path.splitext(upload_file.filename)[1].lower()
+        suffix = os.path.splitext(filename)[1].lower()
         if suffix not in ALLOWED_SUFFIXES:
             flash(f"{suffix or 'That file type'} is not supported. "
                   "Upload a PDF or an image.", "error")
@@ -127,18 +139,15 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
         except ValueError:
             mode = Mode.AUTO
 
-        data = upload_file.read()
-
         try:
-            pdf, result = normalize.normalize_upload(data, upload_file.filename,
-                                                     mode=mode)
+            pdf, result = normalize.normalize_upload(data, filename, mode=mode)
             preview = normalize.render_preview(pdf, width_px=420)
         except NormalizeError as exc:
             flash(str(exc), "error")
             return redirect(url_for("index"))
 
         token = store.add(Pending(pdf=pdf, preview=preview,
-                                  filename=upload_file.filename,
+                                  filename=filename,
                                   summary=result.describe(),
                                   label_shaped=result.label_shaped))
 
