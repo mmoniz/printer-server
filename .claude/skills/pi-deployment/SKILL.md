@@ -38,7 +38,7 @@ Python, not the venv. Its imports must be satisfied system-wide, which is why
 `python3-numpy` is an apt dependency and `install.sh` verifies `import numpy`
 before finishing.
 
-## Three failure modes worth knowing about
+## Four failure modes worth knowing about
 
 These are the ones that cost an evening if you don't know them.
 
@@ -56,6 +56,20 @@ for printer-class USB devices.
 **A single bad job looks like a dead printer.** A filter exiting non-zero
 disables the whole queue. `cupsenable labels` brings it back;
 `journalctl -u cups -n 50` says why it failed.
+
+**The Pi never comes back after a power event.** All the app services
+(`labelserver`, `cups`, `avahi-daemon`, `wifi-powersave-off`) are `enable
+--now`'d, so a clean boot restarts everything on its own — but that assumes
+the boot itself succeeds. An unclean shutdown (a power outage) is exactly
+when a Pi 2's SD card is likely to corrupt its filesystem and stall on an
+fsck, and there's nobody there to power-cycle it. `install.sh` enables the
+Pi's hardware watchdog (`dtparam=watchdog=on` plus a
+`/etc/systemd/system.conf.d/watchdog.conf` drop-in) so systemd reboots the
+board if it ever stops petting the watchdog — a hung boot self-heals instead
+of sitting dark. This needs a reboot after install to take effect, since
+`dtparam` is read at boot time. It doesn't fix corruption on the SD card
+itself; if repeated reboots don't bring it back, pull the card and run
+`fsck` on another machine, or reflash.
 
 ## Diagnosing "nothing prints"
 

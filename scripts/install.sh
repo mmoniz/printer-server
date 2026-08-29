@@ -139,6 +139,31 @@ install -m 644 "$REPO_DIR/scripts/wifi-powersave-off.service" \
 systemctl daemon-reload
 systemctl enable --now wifi-powersave-off || warn "could not disable wifi power saving"
 
+# A hung boot (e.g. an SD card fsck stall after unclean power loss) otherwise
+# sits dark forever with nobody there to power-cycle it. The Pi's hardware
+# watchdog reboots it if systemd itself ever stops petting the watchdog.
+say "Enabling the hardware watchdog"
+BOOT_CONFIG=""
+for candidate in /boot/firmware/config.txt /boot/config.txt; do
+    [[ -f "$candidate" ]] && { BOOT_CONFIG="$candidate"; break; }
+done
+
+if [[ -z "$BOOT_CONFIG" ]]; then
+    warn "could not find config.txt; skipping hardware watchdog"
+else
+    grep -q '^dtparam=watchdog=on' "$BOOT_CONFIG" || \
+        echo 'dtparam=watchdog=on' >> "$BOOT_CONFIG"
+
+    install -d /etc/systemd/system.conf.d
+    cat > /etc/systemd/system.conf.d/watchdog.conf <<'CONF'
+[Manager]
+RuntimeWatchdogSec=15s
+RebootWatchdogSec=10min
+CONF
+    systemctl daemon-reexec || true
+    warn "watchdog needs a reboot to take effect (dtparam is boot-time)"
+fi
+
 # --- done ----------------------------------------------------------------
 HOSTNAME_SHORT="$(hostname -s)"
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
