@@ -106,6 +106,20 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.url-field {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-top: -.5rem;
+}
+
+.url-field label {
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.url-field input[type="url"] { width: 100%; }
+
 .modes {
   border: 0;
   padding: 0;
@@ -173,7 +187,7 @@ h2 {
 .controls input[type="number"] { width: 5rem; }
 .controls input[type="range"] { width: 11rem; }
 
-input[type="number"] {
+input[type="number"], input[type="url"] {
   padding: .45rem .55rem;
   border: 1px solid var(--line);
   border-radius: 8px;

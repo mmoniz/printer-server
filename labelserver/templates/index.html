@@ -6,12 +6,18 @@
 
   <label class="dropzone" id="dropzone">
     <input type="file" name="label" id="file-input"
-           accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.webp" required>
+           accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.webp">
     <span class="dropzone-text">
       <strong>Choose a label</strong>
-      <small id="file-name">PDF or photo &middot; drag one here</small>
+      <small id="file-name">PDF or photo &middot; drag or paste one in</small>
     </span>
   </label>
+
+  <div class="url-field">
+    <label for="url-input">Or paste a link to one</label>
+    <input type="url" name="url" id="url-input"
+           placeholder="https://example.com/label.pdf" inputmode="url">
+  </div>
 
   <fieldset class="modes">
     <legend>How should it be fitted?</legend>
@@ -59,13 +65,44 @@
 {% endif %}
 
 <script>
-// Show the chosen filename, and accept drag-and-drop onto the whole box.
+// Show the chosen filename, and accept drag-and-drop onto the whole box --
+// either a real file (from Finder, or an image another tab handed over as
+// one) or just a link (dragging a bare <a>, or a browser that only offers
+// the image's URL rather than its bytes).
 const input = document.getElementById('file-input');
+const urlInput = document.getElementById('url-input');
 const name = document.getElementById('file-name');
 const zone = document.getElementById('dropzone');
 
+function useFile(file) {
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  urlInput.value = '';
+  name.textContent = file.name;
+}
+
+function useUrl(url) {
+  input.value = '';
+  urlInput.value = url;
+  name.textContent = url;
+}
+
+function looksLikeUrl(text) {
+  try {
+    const parsed = new URL(text.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 input.addEventListener('change', () => {
-  if (input.files.length) name.textContent = input.files[0].name;
+  if (input.files.length) useFile(input.files[0]);
+});
+
+urlInput.addEventListener('input', () => {
+  if (urlInput.value) { input.value = ''; name.textContent = urlInput.value; }
 });
 
 ['dragenter', 'dragover'].forEach(evt =>
@@ -76,8 +113,36 @@ input.addEventListener('change', () => {
 
 zone.addEventListener('drop', e => {
   if (e.dataTransfer.files.length) {
-    input.files = e.dataTransfer.files;
-    name.textContent = e.dataTransfer.files[0].name;
+    useFile(e.dataTransfer.files[0]);
+    return;
+  }
+  const link = e.dataTransfer.getData('text/uri-list') ||
+               e.dataTransfer.getData('text/plain');
+  if (link && looksLikeUrl(link)) useUrl(link.trim());
+});
+
+// A paste from another tab: "copy image" gives real bytes, "copy image
+// address" or a copied hyperlink gives text. Only acts on it when the
+// upload form itself has focus, so pasting elsewhere on the page is inert.
+document.addEventListener('paste', e => {
+  const target = e.target;
+  const inScope = target instanceof Element &&
+                  (target.closest('#upload-form') || target === document.body);
+  if (!inScope) return;
+
+  const items = e.clipboardData ? [...e.clipboardData.items] : [];
+  const fileItem = items.find(item => item.kind === 'file' &&
+                                       item.type.startsWith('image/'));
+  if (fileItem) {
+    e.preventDefault();
+    useFile(fileItem.getAsFile());
+    return;
+  }
+
+  const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+  if (text && looksLikeUrl(text) && e.target !== urlInput) {
+    e.preventDefault();
+    useUrl(text.trim());
   }
 });
 </script>

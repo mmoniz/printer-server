@@ -164,7 +164,8 @@ same code serves different stock.
 
 ## The service
 
-`labelserver.service` runs gunicorn (2 workers, 4 threads) on port 80 as an
+`labelserver.service` runs gunicorn (1 worker, 4 threads -- see the
+`label-web-app` skill for why it's stuck at one worker) on port 80 as an
 unprivileged user, using `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind the
 low port without running as root. Hardened with `ProtectSystem=strict`,
 `NoNewPrivileges` and a `MemoryMax` of 512M; `ReadWritePaths=/run/cups` is what

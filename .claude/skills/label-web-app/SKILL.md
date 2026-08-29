@@ -1,6 +1,6 @@
 ---
 name: label-web-app
-description: The Flask upload/preview/print app and how it talks to CUPS. Use this whenever you touch labelserver/app.py, labelserver/printing.py, the templates or stylesheet, add a route or a print option, or work on job listing, cancelling, previews or error messages. Also read this before writing tests that involve printing — CUPS is stubbed, and there is a specific way to do it.
+description: The Flask upload/preview/print app and how it talks to CUPS. Use this whenever you touch labelserver/app.py, labelserver/printing.py, labelserver/urlfetch.py, the templates or stylesheet, add a route or a print option, or work on job listing, cancelling, previews, pasting/dragging in a link or image, or error messages. Also read this before writing tests that involve printing — CUPS is stubbed, and there is a specific way to do it.
 ---
 
 # The web app
@@ -28,7 +28,7 @@ so a wrong guess is a five-second fix rather than a wasted label.
 
 ```
 GET  /                  upload form + current queue + jobs
-POST /upload            normalize -> render preview -> store -> redirect
+POST /upload            file or url -> normalize -> render preview -> store -> redirect
 GET  /review/<token>    the preview, copies, darkness, Print
 GET  /preview/<tok>.png the preview image
 POST /print/<token>     submit to CUPS, consume the token
@@ -45,6 +45,18 @@ Normalized labels live in memory between preview and print, keyed by a
 In memory on purpose: the Pi boots from an SD card, and cards die from write
 churn. A label nobody printed within half an hour is not worth persisting. A
 token is consumed on successful print so a refresh cannot silently reprint.
+
+This is also why `labelserver.service` runs gunicorn with exactly one
+worker. Each worker is a separate OS process with its own `create_app()`
+call and therefore its own empty `PendingStore` -- a second worker doesn't
+share it, doesn't get told about it, nothing. An upload landing on worker A
+and the browser's `GET /preview/<token>.png` landing on worker B (there's no
+affinity between requests on different connections) is a 404 with no error
+in the logs, which reads as "the preview is just broken" rather than what it
+actually is. If this app ever needs more concurrency than `--threads`
+provides within one process, the store needs to move to something shared
+(disk, sqlite, whatever) first -- turning up `--workers` alone silently
+reintroduces this bug.
 
 ## Talking to CUPS
 
@@ -71,6 +83,40 @@ dangerous but because a 500 is a bad experience:
 - darkness clamps to 0..15
 - extensions are allow-listed; a 25 MB cap returns a flash message, not a crash
 - `NormalizeError` becomes a flash message on the upload page
+
+## Uploading by URL instead of a file
+
+`POST /upload` accepts a `url` field as an alternative to `label`: paste a
+link, or drag/paste an image from another browser tab and the front end
+resolves it to one or the other client-side (a real file if the browser
+handed one over, otherwise the link text) before submitting the same form.
+A file takes priority if both are somehow present.
+
+`urlfetch.fetch_url()` is the one place this app makes an outbound request
+instead of only serving inbound ones, so it is hardened accordingly, not
+just parsed:
+
+- only `http`/`https`; the hostname is resolved and rejected if it's
+  private, loopback, link-local, multicast or reserved — this blocks the
+  app being used to probe the Pi itself, the router, or another LAN device
+- redirects are **not** auto-followed (a custom `HTTPRedirectHandler` that
+  returns `None` from `redirect_request` forces urllib to raise instead of
+  chasing it internally); each hop is re-resolved and re-checked before
+  being followed, so a link that starts public can't 302 its way to
+  something private
+- the response is capped at `MAX_UPLOAD_BYTES` while streaming, and its
+  `Content-Type` has to match one of the allowed suffixes — a generic or
+  wrong type is rejected before it reaches `normalize_upload`
+
+If you add another outbound call anywhere in this app, run it through the
+same checks rather than assuming the LAN-only deployment makes SSRF moot —
+a family member's phone can still paste a link to anything.
+
+Tested against a real local `http.server` in `tests/test_urlfetch.py` (redirect
+chains and the private-address check depend on actual urllib behavior, not
+just the app's own logic), with the private-address check disabled via
+monkeypatch for the tests that aren't about it — that check would otherwise
+reject the test server itself, since it necessarily lives on loopback.
 
 ## Testing
 

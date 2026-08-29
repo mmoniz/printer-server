@@ -13,6 +13,7 @@ from conftest import make_pdf
 from labelserver import app as app_module
 from labelserver import printing
 from labelserver.printing import Job, PrintError
+from labelserver.urlfetch import FetchError
 
 
 class FakeCups:
@@ -63,6 +64,28 @@ def client(cups):
     application = app_module.create_app()
     application.config.update(TESTING=True, SECRET_KEY="test")
     return application.test_client()
+
+
+class FakeUrlfetch:
+    """Stand-in for the network -- tests never make a real request."""
+
+    def __init__(self):
+        self.requested = []
+        self.result = (b"", "label.pdf")
+        self.fail_with = None
+
+    def fetch_url(self, url, max_bytes):
+        self.requested.append((url, max_bytes))
+        if self.fail_with:
+            raise FetchError(self.fail_with)
+        return self.result
+
+
+@pytest.fixture
+def urlfetch(monkeypatch):
+    fake = FakeUrlfetch()
+    monkeypatch.setattr(app_module.urlfetch, "fetch_url", fake.fetch_url)
+    return fake
 
 
 def upload(client, data, filename="label.pdf", mode="auto"):
@@ -120,6 +143,43 @@ def test_printing_consumes_the_token(client, letter_with_label):
     assert b"expired" in again.data
 
 
+def test_pasted_link_is_fetched_and_normalized(client, cups, urlfetch, label_4x6):
+    urlfetch.result = (label_4x6, "label.pdf")
+
+    resp = client.post("/upload",
+                       data={"url": " https://example.com/label.pdf ", "mode": "auto"},
+                       content_type="multipart/form-data", follow_redirects=False)
+    token = token_from(resp)
+
+    assert urlfetch.requested == [("https://example.com/label.pdf",
+                                   app_module.MAX_UPLOAD_BYTES)]
+    assert client.get(f"/review/{token}").status_code == 200
+
+
+def test_file_wins_over_url_when_both_are_present(client, cups, urlfetch, label_4x6):
+    resp = client.post(
+        "/upload",
+        data={"label": (io.BytesIO(label_4x6), "label.pdf"),
+             "url": "https://example.com/other.pdf", "mode": "auto"},
+        content_type="multipart/form-data", follow_redirects=False)
+    token_from(resp)
+    assert urlfetch.requested == []
+
+
+def test_unreachable_link_is_reported(client, urlfetch):
+    urlfetch.fail_with = "Could not reach that link: timed out"
+    resp = client.post("/upload", data={"url": "https://example.com/label.pdf"},
+                       content_type="multipart/form-data", follow_redirects=True)
+    assert b"Could not reach that link" in resp.data
+
+
+def test_fetched_link_still_enforces_the_suffix_allowlist(client, urlfetch):
+    urlfetch.result = (b"whatever", "label.exe")
+    resp = client.post("/upload", data={"url": "https://example.com/label.exe"},
+                       content_type="multipart/form-data", follow_redirects=True)
+    assert b"not supported" in resp.data
+
+
 def test_png_upload_is_accepted(client, cups):
     from PIL import Image
 
@@ -137,7 +197,7 @@ def test_png_upload_is_accepted(client, cups):
 def test_missing_file_is_reported(client):
     resp = client.post("/upload", data={"mode": "auto"},
                        content_type="multipart/form-data", follow_redirects=True)
-    assert b"Choose a file first" in resp.data
+    assert b"Choose a file, or paste a link" in resp.data
 
 
 def test_unsupported_type_is_reported(client):
