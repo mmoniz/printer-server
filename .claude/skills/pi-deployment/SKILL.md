@@ -38,7 +38,7 @@ Python, not the venv. Its imports must be satisfied system-wide, which is why
 `python3-numpy` is an apt dependency and `install.sh` verifies `import numpy`
 before finishing.
 
-## Four failure modes worth knowing about
+## Five failure modes worth knowing about
 
 These are the ones that cost an evening if you don't know them.
 
@@ -47,6 +47,17 @@ and the link only comes back when something on the Pi sends traffic outward — 
 it looks dead from every other device. `wifi-powersave-off.service` disables
 power saving on every `wl*` interface at boot. Check with
 `systemctl status wifi-powersave-off`.
+
+**The wifi dongle fails to reassociate after a cold boot.** Separate from the
+idle-sleep case above: after a power event, the dongle can come up without
+ever getting back onto the network, and a `systemctl status` on the Pi itself
+would show everything healthy since only the link is down. This is
+distinguishable from an app-level problem because it takes *everything* down —
+including `sshd`, which doesn't depend on the labelserver app — not just the
+web app. `network-watchdog.timer` pings the gateway every few minutes and
+escalates: restart networking, then reboot if that doesn't bring it back.
+Check with `systemctl status network-watchdog.timer` and
+`journalctl -u network-watchdog -n 50`.
 
 **The printer stops responding after being idle.** Cheap thermal printers let
 the host suspend them and then fail to wake, which presents as a queue that

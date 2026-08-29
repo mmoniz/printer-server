@@ -164,6 +164,16 @@ CONF
     warn "watchdog needs a reboot to take effect (dtparam is boot-time)"
 fi
 
+# The hardware watchdog above only catches a fully hung system. A dongle that
+# fails to reassociate after a cold boot leaves the Pi up but network-less,
+# which needs its own check.
+say "Installing the network watchdog"
+install -m 755 "$REPO_DIR/scripts/network-watchdog.sh" /usr/local/sbin/network-watchdog.sh
+install -m 644 "$REPO_DIR/scripts/network-watchdog.service" /etc/systemd/system/network-watchdog.service
+install -m 644 "$REPO_DIR/scripts/network-watchdog.timer" /etc/systemd/system/network-watchdog.timer
+systemctl daemon-reload
+systemctl enable --now network-watchdog.timer
+
 # --- done ----------------------------------------------------------------
 HOSTNAME_SHORT="$(hostname -s)"
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
