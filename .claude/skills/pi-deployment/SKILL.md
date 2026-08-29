@@ -1,6 +1,6 @@
 ---
 name: pi-deployment
-description: Installing and running the label server on the Raspberry Pi, plus the hardware failure modes this setup is prone to. Use this whenever you touch scripts/install.sh, the systemd units, the udev rules, scripts/testprint.sh, or diagnose "nothing prints", "the Pi vanished from the network", "the printer stopped responding", or labels coming out misaligned. Read this before adding a runtime dependency — the Pi 2 constrains what can be installed.
+description: Installing and running the label server on the Raspberry Pi, plus the hardware failure modes this setup is prone to. Use this whenever you touch scripts/install.sh, the systemd units, the udev rules, scripts/testprint.sh, or diagnose "nothing prints", "the Pi vanished from the network", "can't ssh into the Pi", "the printer stopped responding", or labels coming out misaligned. Read this before adding a runtime dependency — the Pi 2 constrains what can be installed.
 ---
 
 # Deploying on the Pi
@@ -38,7 +38,7 @@ Python, not the venv. Its imports must be satisfied system-wide, which is why
 `python3-numpy` is an apt dependency and `install.sh` verifies `import numpy`
 before finishing.
 
-## Three failure modes worth knowing about
+## Five failure modes worth knowing about
 
 These are the ones that cost an evening if you don't know them.
 
@@ -48,6 +48,21 @@ it looks dead from every other device. `wifi-powersave-off.service` disables
 power saving on every `wl*` interface at boot. Check with
 `systemctl status wifi-powersave-off`.
 
+**The wifi dongle fails to reassociate after a cold boot.** Separate from the
+idle-sleep case above: after a power event, the dongle can come up without
+ever getting back onto the network, and a `systemctl status` on the Pi itself
+would show everything healthy since only the link is down. This is
+distinguishable from an app-level problem because it takes *everything* down —
+including `sshd`, which doesn't depend on the labelserver app — not just the
+web app. `network-watchdog.timer` pings the gateway every few minutes and
+escalates: restart networking, then reboot if that doesn't bring it back.
+Every check and every escalation is logged to `/var/log/network-watchdog.log`
+on disk (rotated weekly, 8 kept), with a diagnostic snapshot -- `ip addr`,
+`iw link`, `rfkill`, a `dmesg` tail, NetworkManager status -- captured at the
+moment of each restart or reboot. That file is what to pull up first after a
+recovery: it shows what the link looked like right when the watchdog gave up
+on it, not just that it happened.
+
 **The printer stops responding after being idle.** Cheap thermal printers let
 the host suspend them and then fail to wake, which presents as a queue that
 accepts a job and never prints it. `99-labelprinter.rules` disables autosuspend
@@ -56,6 +71,63 @@ for printer-class USB devices.
 **A single bad job looks like a dead printer.** A filter exiting non-zero
 disables the whole queue. `cupsenable labels` brings it back;
 `journalctl -u cups -n 50` says why it failed.
+
+**The Pi never comes back after a power event.** All the app services
+(`labelserver`, `cups`, `avahi-daemon`, `wifi-powersave-off`) are `enable
+--now`'d, so a clean boot restarts everything on its own — but that assumes
+the boot itself succeeds. An unclean shutdown (a power outage) is exactly
+when a Pi 2's SD card is likely to corrupt its filesystem and stall on an
+fsck, and there's nobody there to power-cycle it. `install.sh` enables the
+Pi's hardware watchdog (`dtparam=watchdog=on` plus a
+`/etc/systemd/system.conf.d/watchdog.conf` drop-in) so systemd reboots the
+board if it ever stops petting the watchdog — a hung boot self-heals instead
+of sitting dark. This needs a reboot after install to take effect, since
+`dtparam` is read at boot time. It doesn't fix corruption on the SD card
+itself; if repeated reboots don't bring it back, pull the card and run
+`fsck` on another machine, or reflash.
+
+`install.sh` also switches the journal to persistent storage
+(`/etc/systemd/journald.conf.d/persistent.conf`, capped at 200M). Without
+that, journald keeps logs in tmpfs and a watchdog reboot erases the very
+history that would explain the hang. After one fires, `journalctl -b -1 -e`
+shows the previous boot's tail — often the last thing that happened before
+things went quiet.
+
+## Diagnosing "the Pi is unreachable"
+
+Cheapest checks first, before assuming the worst:
+
+1. **Plug an Ethernet cable into the Pi's built-in port**, straight to the
+   router. This isolates "wifi didn't reconnect" from "the Pi is hung" in one
+   step — if it shows up wired, everything downstream is fine and the wifi
+   dongle is the problem.
+2. **From another machine, check what's actually advertised**, not just the
+   hostname: `ping <host>.local` failing only proves DNS/mDNS resolution
+   failed. Browsing mDNS service types (e.g. `dns-sd -B _ssh._tcp local.` on a
+   Mac, a few seconds is enough) tells you more — if *nothing* comes back, not
+   even `_ssh._tcp`, the whole network stack never came up, since `sshd`
+   doesn't depend on this app at all. If only `_http._tcp`/`_ipp._tcp` are
+   missing, it's app- or CUPS-specific instead; see the `cups-print-chain`
+   skill.
+3. **Once you're back in** (via Ethernet, a monitor, or after a manual power
+   cycle), read the trail the watchdogs left before doing anything else:
+   - `journalctl -b -1 -e` — the previous boot's last messages. This is the
+     only way to see what led up to a hang, and only works because `install.sh`
+     made the journal persistent; on an older install it may be empty.
+   - `/var/log/network-watchdog.log` — did the network watchdog fire? Each
+     escalation entry has a snapshot (`ip addr`, `iw link`, `rfkill`, `dmesg`)
+     captured at the moment it gave up, which usually shows whether the
+     dongle actually lost association or something else was going on.
+   - `systemctl status wifi-powersave-off network-watchdog.timer` — confirms
+     both are actually active on this Pi. If either watchdog was added after
+     the last `install.sh` run, it won't be running yet.
+4. **If it came back on its own with no watchdog entries at all**, the
+   watchdogs likely aren't installed on this Pi yet, or the outage was too
+   short to hit their thresholds (a few minutes for the network watchdog,
+   ~10 for the hardware one) — re-run `sudo ./scripts/install.sh` and reboot
+   once to make sure they're wired up before the next outage.
+5. **If nothing above explains it and repeated reboots don't help**, suspect
+   the SD card itself: pull it, run `fsck` on another machine, or reflash.
 
 ## Diagnosing "nothing prints"
 

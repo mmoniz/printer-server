@@ -139,6 +139,57 @@ install -m 644 "$REPO_DIR/scripts/wifi-powersave-off.service" \
 systemctl daemon-reload
 systemctl enable --now wifi-powersave-off || warn "could not disable wifi power saving"
 
+# Both watchdogs below are only useful if their logs survive the reboot they
+# trigger. By default journald keeps logs in /run (tmpfs), which a reboot
+# wipes -- exactly the moment there's something worth looking at. Persist
+# them to disk, capped so a flapping dongle can't fill the SD card.
+say "Making the journal persistent across reboots"
+install -d /var/log/journal
+systemd-tmpfiles --create --prefix /var/log/journal
+install -d /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/persistent.conf <<'CONF'
+[Journal]
+Storage=persistent
+SystemMaxUse=200M
+CONF
+systemctl restart systemd-journald
+
+# A hung boot (e.g. an SD card fsck stall after unclean power loss) otherwise
+# sits dark forever with nobody there to power-cycle it. The Pi's hardware
+# watchdog reboots it if systemd itself ever stops petting the watchdog.
+say "Enabling the hardware watchdog"
+BOOT_CONFIG=""
+for candidate in /boot/firmware/config.txt /boot/config.txt; do
+    [[ -f "$candidate" ]] && { BOOT_CONFIG="$candidate"; break; }
+done
+
+if [[ -z "$BOOT_CONFIG" ]]; then
+    warn "could not find config.txt; skipping hardware watchdog"
+else
+    grep -q '^dtparam=watchdog=on' "$BOOT_CONFIG" || \
+        echo 'dtparam=watchdog=on' >> "$BOOT_CONFIG"
+
+    install -d /etc/systemd/system.conf.d
+    cat > /etc/systemd/system.conf.d/watchdog.conf <<'CONF'
+[Manager]
+RuntimeWatchdogSec=15s
+RebootWatchdogSec=10min
+CONF
+    systemctl daemon-reexec || true
+    warn "watchdog needs a reboot to take effect (dtparam is boot-time)"
+fi
+
+# The hardware watchdog above only catches a fully hung system. A dongle that
+# fails to reassociate after a cold boot leaves the Pi up but network-less,
+# which needs its own check.
+say "Installing the network watchdog"
+install -m 755 "$REPO_DIR/scripts/network-watchdog.sh" /usr/local/sbin/network-watchdog.sh
+install -m 644 "$REPO_DIR/scripts/network-watchdog.service" /etc/systemd/system/network-watchdog.service
+install -m 644 "$REPO_DIR/scripts/network-watchdog.timer" /etc/systemd/system/network-watchdog.timer
+install -m 644 "$REPO_DIR/scripts/network-watchdog.logrotate" /etc/logrotate.d/network-watchdog
+systemctl daemon-reload
+systemctl enable --now network-watchdog.timer
+
 # --- done ----------------------------------------------------------------
 HOSTNAME_SHORT="$(hostname -s)"
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
