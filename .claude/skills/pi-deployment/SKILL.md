@@ -56,8 +56,12 @@ distinguishable from an app-level problem because it takes *everything* down —
 including `sshd`, which doesn't depend on the labelserver app — not just the
 web app. `network-watchdog.timer` pings the gateway every few minutes and
 escalates: restart networking, then reboot if that doesn't bring it back.
-Check with `systemctl status network-watchdog.timer` and
-`journalctl -u network-watchdog -n 50`.
+Every check and every escalation is logged to `/var/log/network-watchdog.log`
+on disk (rotated weekly, 8 kept), with a diagnostic snapshot -- `ip addr`,
+`iw link`, `rfkill`, a `dmesg` tail, NetworkManager status -- captured at the
+moment of each restart or reboot. That file is what to pull up first after a
+recovery: it shows what the link looked like right when the watchdog gave up
+on it, not just that it happened.
 
 **The printer stops responding after being idle.** Cheap thermal printers let
 the host suspend them and then fail to wake, which presents as a queue that
@@ -81,6 +85,13 @@ of sitting dark. This needs a reboot after install to take effect, since
 `dtparam` is read at boot time. It doesn't fix corruption on the SD card
 itself; if repeated reboots don't bring it back, pull the card and run
 `fsck` on another machine, or reflash.
+
+`install.sh` also switches the journal to persistent storage
+(`/etc/systemd/journald.conf.d/persistent.conf`, capped at 200M). Without
+that, journald keeps logs in tmpfs and a watchdog reboot erases the very
+history that would explain the hang. After one fires, `journalctl -b -1 -e`
+shows the previous boot's tail — often the last thing that happened before
+things went quiet.
 
 ## Diagnosing "nothing prints"
 

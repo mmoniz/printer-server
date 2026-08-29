@@ -1,0 +1,7 @@
+/var/log/network-watchdog.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+}
