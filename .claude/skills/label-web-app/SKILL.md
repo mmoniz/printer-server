@@ -112,6 +112,19 @@ If you add another outbound call anywhere in this app, run it through the
 same checks rather than assuming the LAN-only deployment makes SSRF moot —
 a family member's phone can still paste a link to anything.
 
+**A link that requires being logged in cannot work here, on purpose.**
+Amazon return/shipping label pages are the case that comes up: fetched
+anonymously they redirect to a sign-in page or a generic error page, not the
+label, because the server has no session and never will (automating a login
+is out of scope, not just unimplemented). `fetch_url` can only tell "this
+needs a login" apart from "this link is wrong" by one signal --
+`Content-Type: text/html` where a file was expected -- so that specific case
+gets a different message pointing at what actually works: drag or paste the
+*rendered image* instead of the link. That path goes through the family
+member's own browser and its already-authenticated fetch, not ours, which is
+why it succeeds where the link can't. The hint under the URL field says this
+up front so it doesn't have to be learned by hitting the error first.
+
 Tested against a real local `http.server` in `tests/test_urlfetch.py` (redirect
 chains and the private-address check depend on actual urllib behavior, not
 just the app's own logic), with the private-address check disabled via

@@ -95,8 +95,18 @@ def test_oversized_response_is_rejected(server):
 
 
 def test_unsupported_content_type_is_rejected(server):
-    Handler.routes = {"/page": (200, "text/html", b"<html></html>", {})}
+    Handler.routes = {"/page": (200, "application/json", b"{}", {})}
     with pytest.raises(FetchError, match="isn't a PDF or image"):
+        fetch_url(f"{base_url(server)}/page", max_bytes=1_000_000)
+
+
+def test_html_response_suggests_dragging_the_image_instead(server):
+    """The common real-world cause: a link that needs an active login
+    session (an Amazon return/shipping label, for one) hands back a
+    sign-in or error page instead of the file. We have no session to
+    offer, so the message should point at what actually works."""
+    Handler.routes = {"/page": (200, "text/html", b"<html>sign in</html>", {})}
+    with pytest.raises(FetchError, match="drag or paste the label image"):
         fetch_url(f"{base_url(server)}/page", max_bytes=1_000_000)
 
 
