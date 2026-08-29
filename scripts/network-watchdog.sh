@@ -14,8 +14,9 @@
 
 set -uo pipefail
 
-STATE_FILE="/run/network-watchdog.fails"
-LOG_FILE="/var/log/network-watchdog.log"
+STATE_FILE="${NETWORK_WATCHDOG_STATE_FILE:-/run/network-watchdog.fails}"
+LOG_FILE="${NETWORK_WATCHDOG_LOG_FILE:-/var/log/network-watchdog.log}"
+SYS_CLASS_NET="${NETWORK_WATCHDOG_SYS_CLASS_NET:-/sys/class/net}"
 RESTART_THRESHOLD=3   # ~9 minutes of failures at the default 3-minute timer
 REBOOT_THRESHOLD=6    # ~18 minutes of failures
 
@@ -37,7 +38,7 @@ dump() {
 snapshot() {
     dump "ip-addr" ip -4 addr show
     dump "ip-route" ip route show
-    for dev in /sys/class/net/wl*; do
+    for dev in "$SYS_CLASS_NET"/wl*; do
         [[ -e "$dev" ]] || continue
         dump "iw-link-$(basename "$dev")" iw dev "$(basename "$dev")" link
     done
@@ -77,7 +78,7 @@ if (( FAILS == RESTART_THRESHOLD )); then
         systemctl restart dhcpcd
     else
         log "no known network manager active; cycling wl* interfaces directly"
-        for dev in /sys/class/net/wl*; do
+        for dev in "$SYS_CLASS_NET"/wl*; do
             [[ -e "$dev" ]] || continue
             iface="$(basename "$dev")"
             ip link set "$iface" down
