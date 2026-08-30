@@ -36,18 +36,22 @@ ExecStart=/opt/labelserver/venv/bin/python -m gunicorn \
 Restart=always
 RestartSec=5
 
-# The app only ever reads its own directory and talks to CUPS.
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+# Not `strict`: ProtectSystem=strict plus ReadWritePaths for
+# /opt/labelserver/data reliably left the mail database unwritable in
+# testing -- `unable to open database file` even though the path, its
+# ownership, and the loaded unit's ReadWritePaths all checked out, and even
+# a plain `sudo -u labelserver touch` in that directory worked fine outside
+# the sandbox. Root-caused a genuine systemd quirk to be more effort than it
+# was worth to keep chasing. `full` only makes /usr, /boot and /etc
+# read-only, leaving /run (the CUPS socket) and /opt (app code and the mail
+# database) alone -- no ReadWritePaths needed for either.
+ProtectSystem=full
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# Talking to cupsd goes through this socket. /opt/labelserver/data is where
-# the mail history sqlite file lives -- unlike PendingStore, it's meant to
-# survive a restart, so it has to actually be writable under strict mode.
-ReadWritePaths=/run/cups /opt/labelserver/data
 MemoryMax=512M
 
 [Install]
