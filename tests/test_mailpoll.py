@@ -87,7 +87,7 @@ def test_watermark_only_advances_to_the_highest_uid_seen(store, fake_mail, label
 def test_email_with_no_attachment_is_recorded_with_a_note(store, fake_mail):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(sender="x", subject="a link, not a file",
+    fake_mail.parsed = {raw: ParsedMessage(sender="x", subject="Print my label please",
                                            attachments=[])}
 
     mailpoll.poll_once(CONFIG, store)
@@ -95,6 +95,61 @@ def test_email_with_no_attachment_is_recorded_with_a_note(store, fake_mail):
     messages = store.list_messages()
     assert messages[0].attachments == []
     assert "No PDF or image attachment" in messages[0].note
+
+
+# --- relevance filter -----------------------------------------------------
+
+def test_irrelevant_email_is_not_stored(store, fake_mail):
+    """A dedicated mailbox still gets the odd security alert -- nothing
+    about label printing, no attachment. Don't clutter the admin panel
+    with it, but still advance past it so it isn't re-checked forever."""
+    raw = b"raw"
+    fake_mail.messages = [(5, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="no-reply@example.com", subject="New sign-in to your account",
+        body_text="We noticed a new sign-in from a Mac.", attachments=[])}
+
+    count = mailpoll.poll_once(CONFIG, store)
+
+    assert count == 0
+    assert store.list_messages() == []
+    assert store.get_watermark(mailpoll.WATERMARK_KEY) == 5
+
+
+def test_keyword_in_subject_alone_makes_an_attachmentless_email_relevant(store, fake_mail):
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(sender="x", subject="please print this",
+                                           body_text="no link here", attachments=[])}
+
+    count = mailpoll.poll_once(CONFIG, store)
+
+    assert count == 1
+    assert len(store.list_messages()) == 1
+
+
+def test_keyword_in_body_alone_makes_an_attachmentless_email_relevant(store, fake_mail):
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="fyi",
+        body_text="here's the label: https://example.com/x", attachments=[])}
+
+    count = mailpoll.poll_once(CONFIG, store)
+
+    assert count == 1
+
+
+def test_an_attachment_is_relevant_regardless_of_wording(store, fake_mail, label_4x6):
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="hey", body_text="see attached",
+        attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+
+    count = mailpoll.poll_once(CONFIG, store)
+
+    assert count == 1
 
 
 def test_unreadable_attachment_is_recorded_with_a_note_not_dropped(store, fake_mail):

@@ -20,6 +20,7 @@ from __future__ import annotations
 import email
 import imaplib
 import os
+import re
 from dataclasses import dataclass, field
 from email.message import Message
 from email.policy import default as email_policy
@@ -50,6 +51,7 @@ class Attachment:
 class ParsedMessage:
     sender: str
     subject: str
+    body_text: str = ""
     attachments: list[Attachment] = field(default_factory=list)
 
 
@@ -99,8 +101,43 @@ def fetch_new(config: MailConfig, since_uid: int) -> list[tuple[int, bytes]]:
             pass
 
 
+def _decode_part(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if not payload:
+        return ""
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
+def _extract_body_text(msg: Message) -> str:
+    """Concatenate the readable body, preferring plain text over HTML.
+
+    This is for the relevance filter's keyword scan, not display -- the HTML
+    tag stripping is crude on purpose, good enough to search but not to render.
+    """
+    plain_parts, html_parts = [], []
+    for part in msg.walk():
+        if part.is_multipart() or part.get_filename():
+            continue
+        content_type = part.get_content_type()
+        if content_type == "text/plain":
+            plain_parts.append(_decode_part(part))
+        elif content_type == "text/html":
+            html_parts.append(_decode_part(part))
+
+    if plain_parts:
+        return "\n".join(plain_parts)
+    if html_parts:
+        return "\n".join(re.sub(r"<[^>]+>", " ", h) for h in html_parts)
+    return ""
+
+
 def parse_message(raw: bytes) -> ParsedMessage:
-    """Pull sender, subject and printable attachments out of a raw email."""
+    """Pull sender, subject, body text and printable attachments out of a
+    raw email."""
     msg: Message = email.message_from_bytes(raw, policy=email_policy)
 
     attachments = []
@@ -120,5 +157,6 @@ def parse_message(raw: bytes) -> ParsedMessage:
     return ParsedMessage(
         sender=str(msg.get("From", "unknown sender")),
         subject=str(msg.get("Subject", "(no subject)")),
+        body_text=_extract_body_text(msg),
         attachments=attachments,
     )

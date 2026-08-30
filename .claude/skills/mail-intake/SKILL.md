@@ -1,6 +1,6 @@
 ---
 name: mail-intake
-description: Receiving labels by email as the fallback for a login-walled link that can't even be dragged as an image. Use this whenever you touch labelserver/mail.py, labelserver/mailpoll.py, labelserver/mailstore.py, the admin.html template, the /admin routes, IMAP polling, or investigate "the email never showed up", mail credentials, or the mail history/admin panel. Read this before changing how the mail database is stored or secured.
+description: Receiving labels by email as the fallback for a login-walled link that can't even be dragged as an image. Use this whenever you touch labelserver/mail.py, labelserver/mailpoll.py, labelserver/mailstore.py, the admin.html template, the /admin routes, IMAP polling, the relevance/keyword filter, or investigate "the email never showed up", "unrelated mail is cluttering the admin panel", mail credentials, or the mail history/admin panel. Read this before changing how the mail database is stored or secured, or what counts as relevant.
 ---
 
 # Receiving labels by email
@@ -51,6 +51,35 @@ no attachment, or one that fails to normalize, is still recorded (with a
 `note` explaining why) rather than silently dropped; "the email arrived but
 nothing came of it" is exactly the kind of thing this history exists to show.
 
+## The relevance filter
+
+Nobody creates a mailbox that receives *only* mail they want -- even a
+dedicated one gets the odd security alert or newsletter. `mailpoll._looks_relevant()`
+keeps those out of the admin panel: a printable attachment is relevant on
+its own regardless of wording, and short of that, the subject or body has
+to actually mention `label` or `print` (`RELEVANT_KEYWORDS`,
+case-insensitive substring match against `parsed.subject` + `parsed.body_text`).
+
+This deliberately isn't "does the email contain a link" as a separate
+check. Almost every commercial email contains *some* URL (an unsubscribe
+link, if nothing else), so that signal alone would filter out very little.
+A genuine carrier print/label link's surrounding text -- or the link's own
+path, e.g. `.../ShipperLabel` -- almost always contains one of the keywords
+anyway, so the existing text check already catches the "email with a link,
+no attachment" case without a second, weaker heuristic to maintain.
+
+An irrelevant message still advances the IMAP watermark (`highest = max(...)`
+runs before the relevance check in `poll_once`), so it's evaluated once and
+never re-checked on the next poll -- it's just never passed to
+`store.add_message()`. `poll_once()`'s return value is the count actually
+**stored**, not the count fetched; a test asserting on it should account for
+messages the filter drops.
+
+`body_text` (`mail.parse_message`) prefers the `text/plain` part and only
+falls back to a crude `<[^>]+>` tag strip of `text/html` when no plain-text
+alternative exists -- good enough for a keyword scan, not for display, and
+not intended to be shown anywhere.
+
 ## Configuration and where things live
 
 `create_app()` only starts the polling thread when
@@ -92,9 +121,12 @@ that the config looks right.
 ## Testing
 
 `tests/test_mail.py` covers `parse_message` (pure, built with synthetic
-`EmailMessage`s) and `fetch_new` (mocked `imaplib.IMAP4_SSL`).
-`tests/test_mailpoll.py` covers `poll_once`/`poll_forever` against a fake
-`mail` module and a real (`:memory:`) `MailStore`. `tests/test_mailstore.py`
+`EmailMessage`s, including the `body_text` extraction) and `fetch_new`
+(mocked `imaplib.IMAP4_SSL`). `tests/test_mailpoll.py` covers
+`poll_once`/`poll_forever` against a fake `mail` module and a real
+(`:memory:`) `MailStore`, including the relevance filter's cases (keyword
+in subject alone, keyword in body alone, attachment regardless of wording,
+and the negative case: neither, not stored). `tests/test_mailstore.py`
 covers the store's CRUD directly.
 
 For `/admin` routes in `tests/test_app.py`, the `mail_store` fixture hands
