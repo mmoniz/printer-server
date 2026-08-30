@@ -13,3 +13,5 @@ mail.db
 
 # OS
 .DS_Store
+
+*mail.env
