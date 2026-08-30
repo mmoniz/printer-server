@@ -1,6 +1,7 @@
 """Tests for turning uploads into 4x6 labels."""
 
 import io
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -10,6 +11,8 @@ from labelserver import normalize
 from labelserver.normalize import Mode, NormalizeError
 
 from conftest import make_pdf
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def page_size(pdf_bytes):
@@ -78,6 +81,54 @@ def test_rotated_page_attribute_is_honoured():
 
     assert page_size(out) == (288, 432)
     assert ink_coverage(out) > 0.90
+
+
+def test_unconfident_crop_is_not_rotated_blind():
+    """A real UPS return label surfaced this: a tall page laid out in
+    horizontal bands (sender, ship-to, barcode block, footer) with enough
+    whitespace between them that block segmentation split it apart and
+    picked the barcode band alone as "the label" -- landscape-shaped, but
+    not a clean 4x6/6x4 match (aspect ~1.2, not ~0.67 or ~1.5).
+
+    The old rule rotated purely on width>height vs the target, so it forced
+    a 90-degree turn on this ambiguous band with no way to know if that was
+    the right direction -- and it wasn't, so the tracking barcode came out
+    sideways. This block is a minimal stand-in for that shape: reproduce it
+    with a real carrier PDF and this should stay green.
+    """
+    page_w, page_h = 300.0, 400.0
+    # A landscape block covering most of a portrait page, aspect ~1.2 --
+    # nowhere near label-shaped in either orientation.
+    data = make_pdf(page_w, page_h, [(10, 80, 280, 233)])
+
+    _, result = normalize.normalize_pdf(data)
+
+    assert not result.label_shaped
+    assert result.rotated_deg == 0
+
+
+def test_real_ups_multiband_label_is_not_rotated_sideways():
+    """The actual carrier PDF that surfaced this bug, with names, addresses
+    and the tracking/routing numbers replaced by placeholder text -- the
+    exact layout (page size, section spacing, barcode positions) is
+    untouched, since that's what triggers the segmentation misfire in
+    test_unconfident_crop_is_not_rotated_blind. That synthetic test documents
+    the mechanism cheaply; this one proves the fix against the real,
+    messier carrier output rather than a fixture shaped to be convenient.
+
+    Confirmed against the pre-fix code before committing: this fixture
+    reproduces rotated_deg == 90 there, and == 0 here.
+    """
+    data = (FIXTURES / "ups_multiband_redacted.pdf").read_bytes()
+
+    _, result = normalize.normalize_pdf(data)
+
+    assert not result.label_shaped
+    assert result.rotated_deg == 0
+    # The crop still captures the barcode section at minimum -- this isn't
+    # asserting the crop is *good*, just that nothing came out sideways.
+    assert result.crop_box_pt is not None
+    assert result.rotated_deg == 0
 
 
 # --- modes ---------------------------------------------------------------

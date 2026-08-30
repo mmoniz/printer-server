@@ -81,6 +81,39 @@ attribute on the source page is baked into the content first
 about. pypdf needs the page attached to a writer before it will rewrite content
 streams reliably — that is what the `staging` writer is for.
 
+**Rotation only happens when the cropped region is confidently label-shaped.**
+Width-vs-height alone can't say *which way* to turn something — only that it
+isn't tall like the target. That's fine when the crop is a clean 4x6/6x4
+match (there's really only one sane orientation for that shape), but a real
+UPS return label surfaced the failure mode: a tall page laid out in
+horizontal bands (sender, ship-to, barcode block, footer) with real
+whitespace between them, wide enough that block segmentation split it apart
+and picked one wide-but-not-label-shaped band as "the label." Width > height
+made the old rule rotate it 90° with no way to know if that was the right
+direction — it wasn't, and the tracking barcode came out sideways.
+
+`normalize_pdf` now gates the guess on `label_shaped` (already computed for
+the "does this look like a label" preview warning) whenever an actual
+sub-region was cropped out; only a whole untouched page (`Mode.FIT`, or
+`Mode.AUTO`'s full-page-coverage shortcut) skips this check, since there's no
+segmentation guess to distrust there. Two tests guard this:
+`test_unconfident_crop_is_not_rotated_blind` is a minimal synthetic
+reproduction of the shape; `test_real_ups_multiband_label_is_not_rotated_sideways`
+runs the real carrier PDF that surfaced the bug (`tests/fixtures/ups_multiband_redacted.pdf`
+-- names, addresses and the tracking/routing numbers replaced with placeholder
+text, everything else, including page size and every gap between sections,
+untouched, since that's what triggers the misfire). See both before touching
+this logic again, and don't relax it back to "always rotate on aspect alone."
+
+This doesn't fix the crop itself for a label like that — segmentation may
+still split it into bands, and the constants that correctly exclude a fold
+line (`MIN_BLOCK_COVERAGE`, `MAX_BLOCK_ELONGATION`) can't be tightened
+further without risking exactly the false-positive Letter-page match
+`ASPECT_TOLERANCE` already had to be tuned away from. `Mode.FIT` remains the
+answer when a layout like this guesses wrong: rotating a mis-selected region
+made it look broken (sideways); merely not-cropping-well is a small,
+honest miss the preview screen catches, not a silent one.
+
 ## Testing
 
 `tests/conftest.py` builds synthetic PDFs with the distractors real carriers
