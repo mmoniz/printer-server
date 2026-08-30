@@ -284,6 +284,16 @@ button, .secondary {
   border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
 }
 
+.note-ok {
+  margin: 0;
+  padding: .7rem .9rem;
+  border-radius: 9px;
+  font-size: .88rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
 footer {
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--line);

@@ -33,13 +33,27 @@ CREATE TABLE IF NOT EXISTS attachments (
     pdf BLOB NOT NULL,
     preview BLOB NOT NULL,
     summary TEXT NOT NULL,
-    label_shaped INTEGER NOT NULL
+    label_shaped INTEGER NOT NULL,
+    auto_printed INTEGER NOT NULL DEFAULT 0,
+    print_job_id TEXT,
+    print_error TEXT
 );
 CREATE TABLE IF NOT EXISTS state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 """
+
+# Columns added after the initial release. CREATE TABLE IF NOT EXISTS leaves
+# an existing mail.db on a real Pi untouched, so anything added later needs
+# an explicit, idempotent ALTER TABLE here too -- see the ProtectSystem trap
+# in the mail-intake skill for why "looked right in a fresh venv" isn't
+# enough evidence for this database.
+_ATTACHMENT_MIGRATIONS = [
+    ("auto_printed", "INTEGER NOT NULL DEFAULT 0"),
+    ("print_job_id", "TEXT"),
+    ("print_error", "TEXT"),
+]
 
 
 @dataclass
@@ -48,6 +62,9 @@ class AttachmentSummary:
     filename: str
     summary: str
     label_shaped: bool
+    auto_printed: bool
+    print_job_id: str | None
+    print_error: str | None
 
 
 @dataclass
@@ -71,8 +88,17 @@ class MailStore:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
         self._lock = Lock()
+
+    def _migrate(self) -> None:
+        existing = {row[1] for row in
+                   self._conn.execute("PRAGMA table_info(attachments)")}
+        for column, definition in _ATTACHMENT_MIGRATIONS:
+            if column not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE attachments ADD COLUMN {column} {definition}")
 
     def get_watermark(self, key: str) -> int:
         with self._lock:
@@ -98,11 +124,13 @@ class MailStore:
             message_id = cur.lastrowid
             for att in attachments:
                 self._conn.execute(
-                    "INSERT INTO attachments "
-                    "(message_id, filename, pdf, preview, summary, label_shaped) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO attachments (message_id, filename, pdf, preview, "
+                    "summary, label_shaped, auto_printed, print_job_id, print_error) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (message_id, att["filename"], att["pdf"], att["preview"],
-                     att["summary"], int(att["label_shaped"])))
+                     att["summary"], int(att["label_shaped"]),
+                     int(att.get("auto_printed", False)),
+                     att.get("print_job_id"), att.get("print_error")))
             self._conn.commit()
             return message_id
 
@@ -114,12 +142,15 @@ class MailStore:
             result = []
             for mid, sender, subject, received_at, note in rows:
                 att_rows = self._conn.execute(
-                    "SELECT id, filename, summary, label_shaped FROM attachments "
+                    "SELECT id, filename, summary, label_shaped, auto_printed, "
+                    "print_job_id, print_error FROM attachments "
                     "WHERE message_id = ? ORDER BY id", (mid,)).fetchall()
                 attachments = [
                     AttachmentSummary(id=a_id, filename=fn, summary=summ,
-                                      label_shaped=bool(shaped))
-                    for a_id, fn, summ, shaped in att_rows
+                                      label_shaped=bool(shaped),
+                                      auto_printed=bool(printed),
+                                      print_job_id=job_id, print_error=err)
+                    for a_id, fn, summ, shaped, printed, job_id, err in att_rows
                 ]
                 result.append(MailSummary(id=mid, sender=sender, subject=subject,
                                           received_at=received_at, note=note,
@@ -129,13 +160,16 @@ class MailStore:
     def get_attachment(self, attachment_id: int) -> AttachmentRecord | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, filename, pdf, preview, summary, label_shaped "
+                "SELECT id, filename, pdf, preview, summary, label_shaped, "
+                "auto_printed, print_job_id, print_error "
                 "FROM attachments WHERE id = ?", (attachment_id,)).fetchone()
             if row is None:
                 return None
-            a_id, fn, pdf, preview, summary, shaped = row
+            a_id, fn, pdf, preview, summary, shaped, printed, job_id, err = row
             return AttachmentRecord(id=a_id, filename=fn, pdf=pdf, preview=preview,
-                                    summary=summary, label_shaped=bool(shaped))
+                                    summary=summary, label_shaped=bool(shaped),
+                                    auto_printed=bool(printed),
+                                    print_job_id=job_id, print_error=err)
 
     def delete_message(self, message_id: int) -> None:
         with self._lock:

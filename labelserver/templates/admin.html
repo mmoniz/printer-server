@@ -46,8 +46,18 @@
       {% if not att.label_shaped %}
       <p class="warn">This does not look like a 4&times;6 label.</p>
       {% endif %}
+      {% if att.auto_printed %}
+      <p class="note-ok">Printed automatically (job {{ att.print_job_id }}).</p>
+      {% elif att.print_error %}
+      <p class="warn">
+        This looked confidently like a label, but auto-print failed:
+        {{ att.print_error }}. Use the button below to print it manually.
+      </p>
+      {% endif %}
       <form method="post" action="{{ url_for('admin_use', attachment_id=att.id) }}">
-        <button type="submit" class="primary">Use this label</button>
+        <button type="submit" class="primary">
+          {{ "Print again" if att.auto_printed else "Use this label" }}
+        </button>
       </form>
     </div>
   </div>
