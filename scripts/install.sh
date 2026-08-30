@@ -44,8 +44,9 @@ cp -r "$REPO_DIR/labelserver" "$APP_DIR/"
 cp "$REPO_DIR/requirements.txt" "$APP_DIR/"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-# Where the mail history sqlite file lives -- separate from the app/venv so
-# ReadWritePaths in the systemd unit doesn't have to cover the code itself.
+# Where the mail history sqlite file lives -- separate from the app/venv,
+# though ProtectSystem=full in the systemd unit leaves all of $APP_DIR
+# writable anyway (see labelserver.service for why it's not `strict`).
 install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR/data"
 
 if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then

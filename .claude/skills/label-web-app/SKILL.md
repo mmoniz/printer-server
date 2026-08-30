@@ -191,13 +191,27 @@ them, so the thread never starts and the test suite makes no network calls
 -- `MailStore` itself is still created (pointed at `:memory:` in tests via
 `create_app(mail_db=":memory:")`) so `/admin` always has something to render,
 configured or not. In production, `LABELSERVER_MAIL_DB` points at
-`/opt/labelserver/data/mail.db`; that path needs its own `ReadWritePaths`
-entry since `ProtectSystem=strict` otherwise makes it read-only, and needs
-to exist and be owned by the service user before the app can write to it
-(`install.sh` creates it). Credentials live in `/etc/labelserver/mail.env`
-(`scripts/mail.env.example` is the template), mode 600, loaded via
-`EnvironmentFile=-...` in `labelserver.service` -- the leading `-` means the
-unit still starts with mail polling off if the file isn't there yet.
+`/opt/labelserver/data/mail.db`, which needs to exist and be owned by the
+service user before the app can write to it (`install.sh` creates it).
+
+That path was originally covered by an explicit `ReadWritePaths` entry under
+`ProtectSystem=strict`, which looked right on paper -- correct ownership,
+correct permissions, the loaded unit reporting the right value via
+`systemctl show` -- and still left `sqlite3.OperationalError: unable to open
+database file` on a real Pi, even though a plain `sudo -u labelserver touch`
+in that same directory worked fine outside the sandbox. Chasing the exact
+systemd mechanism further wasn't worth it: `labelserver.service` now uses
+`ProtectSystem=full` instead, which leaves `/opt` and `/run` alone entirely
+(only `/usr`, `/boot` and `/etc` become read-only) and needs no
+`ReadWritePaths` for either the mail database or the CUPS socket. If you're
+tempted to tighten this back to `strict` for defense in depth, be ready to
+actually verify a write to `/opt/labelserver/data` survives a real restart
+on real hardware, not just that the config looks right.
+
+Credentials live in `/etc/labelserver/mail.env` (`scripts/mail.env.example`
+is the template), mode 600, loaded via `EnvironmentFile=-...` in
+`labelserver.service` -- the leading `-` means the unit still starts with
+mail polling off if the file isn't there yet.
 
 ## Testing
 

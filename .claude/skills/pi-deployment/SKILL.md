@@ -174,10 +174,15 @@ same code serves different stock.
 `labelserver.service` runs gunicorn (1 worker, 4 threads -- see the
 `label-web-app` skill for why it's stuck at one worker) on port 80 as an
 unprivileged user, using `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind the
-low port without running as root. Hardened with `ProtectSystem=strict`,
-`NoNewPrivileges` and a `MemoryMax` of 512M; `ReadWritePaths=/run/cups` is what
-lets it reach the CUPS socket. If you add anything that writes to disk, it needs
-a `ReadWritePaths` entry or it will fail with a confusing permission error.
+low port without running as root. Hardened with `ProtectSystem=full`,
+`NoNewPrivileges` and a `MemoryMax` of 512M. Deliberately `full`, not
+`strict` -- `strict` plus a `ReadWritePaths` entry for the mail database
+directory looked correctly configured in every way `systemctl show` and
+plain `ls`/`touch` could confirm, and still failed with "unable to open
+database file" on a real Pi (see the `label-web-app` skill for the full
+story). `full` only touches `/usr`, `/boot` and `/etc`, so both `/run`
+(the CUPS socket) and `/opt` (the app and its mail database) just work
+without needing `ReadWritePaths` at all.
 
 ```bash
 systemctl status labelserver
