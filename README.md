@@ -96,6 +96,8 @@ If a change ever breaks printer compatibility, those tests fail loudly.
 | `labelserver/normalize.py` | Uploads → a 4x6 label PDF. |
 | `labelserver/printing.py` | Submitting to and querying CUPS via `lp`. |
 | `labelserver/app.py` | The Flask web app. |
+| `labelserver/urlfetch.py` | Fetching a pasted link, hardened against SSRF. |
+| `labelserver/mail.py`, `mailpoll.py`, `mailstore.py` | Receiving labels by email over IMAP. |
 | `cups/rastertotspl` | CUPS filter entry point. |
 | `cups/LabelPrinter.ppd` | Generated — edit `scripts/make_ppd.py`. |
 | `scripts/install.sh` | One-shot Pi setup. |
@@ -113,8 +115,13 @@ picks these up automatically; they read fine as plain Markdown too.
 | `tspl-printer-protocol` | The wire format, the inverted bitmap, row padding, golden fixtures |
 | `label-normalization` | Finding a label on a carrier page, the detection constants |
 | `cups-print-chain` | PPD generation, the PPD/filter contract, AirPrint discovery |
-| `label-web-app` | Routes, the preview-then-print flow, testing against stubbed CUPS |
-| `pi-deployment` | Installing, the hardware failure modes, tuning against real stock |
+| `label-web-app` | Core routes, the preview-then-print flow, testing against stubbed CUPS |
+| `url-link-intake` | Uploading by pasted link or dragged image, SSRF hardening |
+| `mail-intake` | Uploading by email, IMAP polling, the mail history admin panel |
+| `pi-deployment` | Installing, the hardware/network failure modes, tuning against real stock |
+
+See [CLAUDE.md](CLAUDE.md) for the fuller map and the conventions that span
+all of them.
 
 ## Fitting labels to 4x6
 
@@ -181,7 +188,7 @@ printer-class devices.
 
 ## Status
 
-The printer driver, PPD, normalizer, web app and installer are written and
-tested. None of it has touched real hardware yet — the Pi is still in a drawer.
-The parts that need a physical printer to confirm are the `GAP` setting for the
-actual label stock, the print origin, and the wifi dongle's chipset support.
+Running on real hardware: printing, AirPrint, and the web app (file upload,
+pasted links, and email intake) have all been used and debugged on the
+actual Pi. The `pi-deployment` skill's failure-mode list is written from
+real incidents on this box, not anticipated ones.
