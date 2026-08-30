@@ -1,6 +1,7 @@
 """Tests for turning uploads into 4x6 labels."""
 
 import io
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -10,6 +11,8 @@ from labelserver import normalize
 from labelserver.normalize import Mode, NormalizeError
 
 from conftest import make_pdf
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def page_size(pdf_bytes):
@@ -101,6 +104,30 @@ def test_unconfident_crop_is_not_rotated_blind():
     _, result = normalize.normalize_pdf(data)
 
     assert not result.label_shaped
+    assert result.rotated_deg == 0
+
+
+def test_real_ups_multiband_label_is_not_rotated_sideways():
+    """The actual carrier PDF that surfaced this bug, with names, addresses
+    and the tracking/routing numbers replaced by placeholder text -- the
+    exact layout (page size, section spacing, barcode positions) is
+    untouched, since that's what triggers the segmentation misfire in
+    test_unconfident_crop_is_not_rotated_blind. That synthetic test documents
+    the mechanism cheaply; this one proves the fix against the real,
+    messier carrier output rather than a fixture shaped to be convenient.
+
+    Confirmed against the pre-fix code before committing: this fixture
+    reproduces rotated_deg == 90 there, and == 0 here.
+    """
+    data = (FIXTURES / "ups_multiband_redacted.pdf").read_bytes()
+
+    _, result = normalize.normalize_pdf(data)
+
+    assert not result.label_shaped
+    assert result.rotated_deg == 0
+    # The crop still captures the barcode section at minimum -- this isn't
+    # asserting the crop is *good*, just that nothing came out sideways.
+    assert result.crop_box_pt is not None
     assert result.rotated_deg == 0
 
 

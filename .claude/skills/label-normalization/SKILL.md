@@ -96,9 +96,14 @@ direction — it wasn't, and the tracking barcode came out sideways.
 the "does this look like a label" preview warning) whenever an actual
 sub-region was cropped out; only a whole untouched page (`Mode.FIT`, or
 `Mode.AUTO`'s full-page-coverage shortcut) skips this check, since there's no
-segmentation guess to distrust there. `test_unconfident_crop_is_not_rotated_blind`
-is a minimal synthetic reproduction — see it before touching this logic
-again, and don't relax it back to "always rotate on aspect alone."
+segmentation guess to distrust there. Two tests guard this:
+`test_unconfident_crop_is_not_rotated_blind` is a minimal synthetic
+reproduction of the shape; `test_real_ups_multiband_label_is_not_rotated_sideways`
+runs the real carrier PDF that surfaced the bug (`tests/fixtures/ups_multiband_redacted.pdf`
+-- names, addresses and the tracking/routing numbers replaced with placeholder
+text, everything else, including page size and every gap between sections,
+untouched, since that's what triggers the misfire). See both before touching
+this logic again, and don't relax it back to "always rotate on aspect alone."
 
 This doesn't fix the crop itself for a label like that — segmentation may
 still split it into bands, and the constants that correctly exclude a fold
