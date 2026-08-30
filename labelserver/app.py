@@ -111,7 +111,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
         interval = float(os.environ.get("LABELSERVER_MAIL_POLL_SECONDS", "300"))
         thread = threading.Thread(
             target=mailpoll.poll_forever,
-            args=(mail_config, mail_store, interval, stop_event),
+            args=(mail_config, mail_store, interval, stop_event, queue),
             daemon=True)
         thread.start()
 

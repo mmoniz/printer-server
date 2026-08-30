@@ -1,6 +1,6 @@
 ---
 name: mail-intake
-description: Receiving labels by email as the fallback for a login-walled link that can't even be dragged as an image. Use this whenever you touch labelserver/mail.py, labelserver/mailpoll.py, labelserver/mailstore.py, the admin.html template, the /admin routes, IMAP polling, the relevance/keyword filter, or investigate "the email never showed up", "unrelated mail is cluttering the admin panel", mail credentials, or the mail history/admin panel. Read this before changing how the mail database is stored or secured, or what counts as relevant.
+description: Receiving labels by email as the fallback for a login-walled link that can't even be dragged as an image. Use this whenever you touch labelserver/mail.py, labelserver/mailpoll.py, labelserver/mailstore.py, the admin.html template, the /admin routes, IMAP polling, the relevance/keyword filter, the auto-print confidence score, or investigate "the email never showed up", "unrelated mail is cluttering the admin panel", "why did this print without me clicking anything", mail credentials, or the mail history/admin panel. Read this before changing how the mail database is stored or secured, what counts as relevant, or what counts as confident enough to auto-print.
 ---
 
 # Receiving labels by email
@@ -85,6 +85,61 @@ with `@media print` and a `<script>` calling `window.print()`, and the
 literal word "print" survived a tag-only strip, making an unrelated account
 email look relevant.
 
+## The auto-print confidence score
+
+`label-web-app` explains why upload never auto-prints: a preview lets a
+human catch a bad crop before it reaches the printer. Mail intake breaks
+that rule on purpose for attachments confident enough to skip the wait, on
+the theory that a family member emailing a return label to a dedicated
+mailbox already treated hitting "print" as a given -- but only when the
+evidence is genuinely strong, since nobody is there to catch a bad guess.
+
+`mailpoll._confidence(subject, result)` scores each successfully-normalized
+attachment out of 2, from two independent signals worth one point each:
+
+- **Visual**: `result.label_shaped` -- the crop detector (`normalize.py`)
+  is itself confident this is a 4x6-shaped label, the same signal admin.html
+  uses for its "does not look like a label" warning.
+- **Textual**: the *subject* (not `body_text` -- see above for why that's
+  trusted less) contains an unambiguous phrase from `STRONG_LABEL_PHRASES`
+  ("shipping label", "return label", "prepaid label"), not just the loose
+  `RELEVANT_KEYWORDS` substring that decided whether to keep the email at
+  all.
+
+`AUTO_PRINT_CONFIDENCE = 1` is a moderate bar: either signal alone is
+enough, rather than requiring both to agree. A confident crop with a vague
+subject ("here's the file") and a vague crop with an unmistakable subject
+("Your UPS Shipping Label") both auto-print; an attachment with neither
+falls back to sitting in the admin panel for manual review, exactly like
+before this feature existed.
+
+Meeting the bar only means *attempting* the print -- `printing.submit()`
+still goes through the real queue and can still fail (queue disabled, CUPS
+down). That failure is never swallowed: the attachment is stored with
+`print_error` set and `auto_printed` false, still visible in the admin
+panel with a "looked confidently like a label, but auto-print failed"
+message and the usual manual print button, per the "leave a trail" rule for
+anything that runs unattended. `auto_printed`, `print_job_id` and
+`print_error` are separate columns on `attachments`, migrated onto an
+existing `mail.db` in `MailStore._migrate()` (idempotent `ALTER TABLE`,
+checked via `PRAGMA table_info`) rather than folded into the free-text
+`note` column, which stays reserved for normalize problems.
+
+`poll_once`/`poll_forever` take the print queue name as a parameter now
+(`create_app` passes `app.config["QUEUE"]` through) instead of hardcoding
+`printing.DEFAULT_QUEUE`, so auto-print always lands on the same queue a
+manual upload would.
+
+### Testing
+
+Every test in `test_mailpoll.py` now runs under an **autouse**
+`fake_printing` fixture that patches `mailpoll.printing.submit` -- without
+it, any attachment that normalizes to something label-shaped (most test
+fixtures do) would try to shell out to a real `lp` during the test run. The
+confidence-score tests build a deliberately non-label-shaped attachment
+(a synthetic square PDF, `_square_attachment_pdf()`) to exercise the
+subject-alone path independently of the crop signal.
+
 ## Configuration and where things live
 
 `create_app()` only starts the polling thread when
@@ -131,8 +186,13 @@ that the config looks right.
 `poll_once`/`poll_forever` against a fake `mail` module and a real
 (`:memory:`) `MailStore`, including the relevance filter's cases (keyword
 in subject alone, keyword in body alone, attachment regardless of wording,
-and the negative case: neither, not stored). `tests/test_mailstore.py`
-covers the store's CRUD directly.
+and the negative case: neither, not stored) and the confidence-score cases
+(visual signal alone, subject signal alone, neither, and a confident match
+that still fails to print). An **autouse** `fake_printing` fixture patches
+`mailpoll.printing.submit` for every test in the file -- without it, any
+attachment that normalizes to something label-shaped (most test fixtures
+do, `label_4x6` included) would try to shell out to a real `lp` during the
+test run. `tests/test_mailstore.py` covers the store's CRUD directly.
 
 For `/admin` routes in `tests/test_app.py`, the `mail_store` fixture hands
 back the app's actual `MailStore` (via `app.config["MAIL_STORE"]`, exposed

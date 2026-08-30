@@ -14,10 +14,12 @@ import time
 from email.message import EmailMessage
 
 import pytest
+from conftest import make_pdf
 
 from labelserver import mailpoll
 from labelserver.mail import Attachment, MailConfig, MailError, ParsedMessage, parse_message
 from labelserver.mailstore import MailStore
+from labelserver.printing import PrintError
 
 CONFIG = MailConfig(host="imap.example.com", username="labels@example.com",
                     password="app-password")
@@ -50,6 +52,39 @@ def fake_mail(monkeypatch):
     return fake
 
 
+class FakePrinting:
+    """Stand-in for the lp command line -- auto-print must never shell out
+    for real during a test."""
+
+    def __init__(self):
+        self.submitted = []
+        self.fail_with: str | None = None
+
+    def submit(self, pdf, queue="labels", title="label", copies=1,
+               darkness=None, media="4x6.Fullbleed"):
+        if self.fail_with:
+            raise PrintError(self.fail_with)
+        self.submitted.append({"pdf": pdf, "queue": queue, "title": title})
+        return f"{queue}-{len(self.submitted)}"
+
+
+@pytest.fixture(autouse=True)
+def fake_printing(monkeypatch):
+    """Autouse: every test in this file goes through poll_once, and a
+    confident-enough attachment now tries to print for real unless this is
+    patched -- see mailpoll._confidence."""
+    fake = FakePrinting()
+    monkeypatch.setattr(mailpoll.printing, "submit", fake.submit)
+    return fake
+
+
+# A block shaped nothing like a 4x6 label (square, not 2:3), but large and
+# solid enough to normalize cleanly -- for exercising the "confident text,
+# unconfident crop" half of the confidence score on its own.
+def _square_attachment_pdf():
+    return make_pdf(300, 300, [(20, 20, 260, 260)])
+
+
 def test_no_new_mail_does_nothing(store, fake_mail):
     assert mailpoll.poll_once(CONFIG, store) == 0
     assert store.list_messages() == []
@@ -72,6 +107,9 @@ def test_a_printable_attachment_is_normalized_and_stored(store, fake_mail, label
     assert messages[0].note == ""
     assert len(messages[0].attachments) == 1
     assert store.get_watermark(mailpoll.WATERMARK_KEY) == 1
+    # label_4x6 is confidently label-shaped, which is enough on its own to
+    # auto-print (see the confidence-score tests below).
+    assert messages[0].attachments[0].auto_printed is True
 
 
 def test_watermark_only_advances_to_the_highest_uid_seen(store, fake_mail, label_4x6):
@@ -176,6 +214,88 @@ def test_a_real_account_notification_email_is_not_relevant():
     parsed = parse_message(bytes(msg))
 
     assert not mailpoll._looks_relevant(parsed)
+
+
+# --- confidence score / auto-print -----------------------------------------
+
+def test_a_confident_crop_alone_is_enough_to_auto_print(store, fake_mail, fake_printing, label_4x6):
+    """label_4x6 crops confidently to a 4x6 shape; the subject says nothing
+    special. A moderate bar lets that one strong visual signal carry it."""
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="here's your file",
+        attachments=[Attachment(filename="label.pdf", data=label_4x6)])}
+
+    mailpoll.poll_once(CONFIG, store, queue="mylabels")
+
+    att = store.list_messages()[0].attachments[0]
+    assert att.auto_printed is True
+    assert att.print_job_id == "mylabels-1"
+    assert att.print_error is None
+    assert len(fake_printing.submitted) == 1
+    assert fake_printing.submitted[0]["queue"] == "mylabels"
+    assert fake_printing.submitted[0]["title"] == "label.pdf"
+
+
+def test_a_strong_subject_alone_is_enough_to_auto_print(store, fake_mail, fake_printing):
+    """The crop here isn't label-shaped (a square block), but the subject
+    unambiguously names a shipping label -- that alone should carry it."""
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="Your UPS Shipping Label is attached",
+        attachments=[Attachment(filename="a.pdf", data=_square_attachment_pdf())])}
+
+    mailpoll.poll_once(CONFIG, store)
+
+    att = store.list_messages()[0].attachments[0]
+    assert att.label_shaped is False
+    assert att.auto_printed is True
+    assert len(fake_printing.submitted) == 1
+
+
+def test_neither_signal_present_is_not_auto_printed(store, fake_mail, fake_printing):
+    """A weak crop and a generic subject: falls back to manual review in
+    the admin panel, same as before this feature existed."""
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="please print this",
+        attachments=[Attachment(filename="a.pdf", data=_square_attachment_pdf())])}
+
+    mailpoll.poll_once(CONFIG, store)
+
+    att = store.list_messages()[0].attachments[0]
+    assert att.auto_printed is False
+    assert att.print_job_id is None
+    assert att.print_error is None
+    assert fake_printing.submitted == []
+
+
+def test_a_confident_match_that_fails_to_print_is_recorded_not_dropped(
+        store, fake_mail, fake_printing, label_4x6):
+    """Confidence just means "try to print automatically," not "trust it
+    blindly." A CUPS failure must still leave the attachment visible for a
+    human to print manually -- the whole point of keeping the mail history
+    at all -- with the reason it failed, per the "leave a trail" rule for
+    anything that runs unattended."""
+    fake_printing.fail_with = "the 'labels' queue is rejecting jobs"
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="Your label",
+        attachments=[Attachment(filename="label.pdf", data=label_4x6)])}
+
+    mailpoll.poll_once(CONFIG, store)
+
+    messages = store.list_messages()
+    att = messages[0].attachments[0]
+    assert att.auto_printed is False
+    assert att.print_job_id is None
+    assert "rejecting jobs" in att.print_error
+    # Not an attachment-read problem, so the message-level note is untouched.
+    assert messages[0].note == ""
 
 
 def test_unreadable_attachment_is_recorded_with_a_note_not_dropped(store, fake_mail):
