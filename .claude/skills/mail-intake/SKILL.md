@@ -78,7 +78,12 @@ messages the filter drops.
 `body_text` (`mail.parse_message`) prefers the `text/plain` part and only
 falls back to a crude `<[^>]+>` tag strip of `text/html` when no plain-text
 alternative exists -- good enough for a keyword scan, not for display, and
-not intended to be shown anywhere.
+not intended to be shown anywhere. That fallback drops `<script>`/`<style>`
+*content*, not just their tags, before the generic strip -- a real Gmail
+notification exposed this: a browser extension had injected a `<style>`
+with `@media print` and a `<script>` calling `window.print()`, and the
+literal word "print" survived a tag-only strip, making an unrelated account
+email look relevant.
 
 ## Configuration and where things live
 

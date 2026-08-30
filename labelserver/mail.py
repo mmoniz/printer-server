@@ -112,11 +112,20 @@ def _decode_part(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
+_SCRIPT_OR_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>",
+                              re.DOTALL | re.IGNORECASE)
+
+
 def _extract_body_text(msg: Message) -> str:
     """Concatenate the readable body, preferring plain text over HTML.
 
     This is for the relevance filter's keyword scan, not display -- the HTML
     tag stripping is crude on purpose, good enough to search but not to render.
+    Script and style *contents* are dropped first, not just their tags: a
+    real Google account-notification email surfaced this -- a browser
+    extension had injected a <style> with "@media print" and a <script>
+    calling "window.print()", and the plain `<[^>]+>` strip left that literal
+    text behind, making an unrelated email look relevant.
     """
     plain_parts, html_parts = [], []
     for part in msg.walk():
@@ -131,7 +140,8 @@ def _extract_body_text(msg: Message) -> str:
     if plain_parts:
         return "\n".join(plain_parts)
     if html_parts:
-        return "\n".join(re.sub(r"<[^>]+>", " ", h) for h in html_parts)
+        cleaned = (_SCRIPT_OR_STYLE.sub(" ", h) for h in html_parts)
+        return "\n".join(re.sub(r"<[^>]+>", " ", h) for h in cleaned)
     return ""
 
 

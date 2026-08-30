@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import threading
 import time
+from email.message import EmailMessage
 
 import pytest
 
 from labelserver import mailpoll
-from labelserver.mail import Attachment, MailConfig, MailError, ParsedMessage
+from labelserver.mail import Attachment, MailConfig, MailError, ParsedMessage, parse_message
 from labelserver.mailstore import MailStore
 
 CONFIG = MailConfig(host="imap.example.com", username="labels@example.com",
@@ -150,6 +151,31 @@ def test_an_attachment_is_relevant_regardless_of_wording(store, fake_mail, label
     count = mailpoll.poll_once(CONFIG, store)
 
     assert count == 1
+
+
+def test_a_real_account_notification_email_is_not_relevant():
+    """Regression for a genuine Gmail "Welcome to Google on your Mac OS"
+    notification: no attachment, and nothing in its actual content mentions
+    a label or printing. But a browser extension had injected a <style>
+    with "@media print" and a <script> calling "window.print()" into the
+    HTML -- literal text that used to leak through mail.py's tag-stripping
+    and make this look relevant. Goes through the real parse_message(), not
+    FakeMail, since the bug lived in HTML extraction, not in this filter."""
+    msg = EmailMessage()
+    msg["From"] = "Google <no-reply@google.com>"
+    msg["Subject"] = "Welcome to Google on your Mac OS"
+    msg.add_alternative(
+        "<html><head>"
+        "<style>@media print { .toolbar { display: none; } }</style>"
+        "</head><body>"
+        "<p>Get started with Google on your new device.</p>"
+        "<script>document.body.onload = function() { window.print(); };</script>"
+        "</body></html>",
+        subtype="html")
+
+    parsed = parse_message(bytes(msg))
+
+    assert not mailpoll._looks_relevant(parsed)
 
 
 def test_unreadable_attachment_is_recorded_with_a_note_not_dropped(store, fake_mail):

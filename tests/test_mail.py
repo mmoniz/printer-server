@@ -132,6 +132,31 @@ def test_plain_text_preferred_over_html_when_both_present():
     assert "plain version" in parsed.body_text
 
 
+def test_script_and_style_content_does_not_leak_into_body_text():
+    """Regression for a real Google account-notification email: a browser
+    extension had injected a <style> containing "@media print" and a
+    <script> calling "window.print()" into the page. The old tag-stripping
+    regex only removed the <script>/<style> markers, not their contents, so
+    that literal text leaked into body_text and made an unrelated email look
+    relevant to the label/print filter."""
+    msg = EmailMessage()
+    msg["From"] = "Google <no-reply@google.com>"
+    msg["Subject"] = "Welcome to Google on your Mac OS"
+    msg.add_alternative(
+        "<html><head>"
+        "<style>@media print { .toolbar { display: none; } }</style>"
+        "</head><body>"
+        "<p>Get started with Google on your new device.</p>"
+        "<script>document.body.onload = function() { window.print(); };</script>"
+        "</body></html>",
+        subtype="html")
+
+    parsed = parse_message(bytes(msg))
+
+    assert "print" not in parsed.body_text.lower()
+    assert "get started with google" in parsed.body_text.lower()
+
+
 def test_no_body_at_all_gives_empty_string():
     msg = EmailMessage()
     msg["From"] = "someone@example.com"
