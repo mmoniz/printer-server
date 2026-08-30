@@ -26,7 +26,7 @@ If no USB printer is detected it warns and continues, so the rest of the setup
 still completes. Plug the printer in and re-run.
 
 Also creates `/opt/labelserver/data` (where the mail history sqlite file
-lives -- see the label-web-app skill) and, if it doesn't already exist,
+lives -- see the mail-intake skill) and, if it doesn't already exist,
 `/etc/labelserver/mail.env` from `scripts/mail.env.example`. That file is
 never overwritten on a re-run, so filling it in and re-running `install.sh`
 later is safe -- your credentials survive. It ships with everything
@@ -179,7 +179,7 @@ low port without running as root. Hardened with `ProtectSystem=full`,
 `strict` -- `strict` plus a `ReadWritePaths` entry for the mail database
 directory looked correctly configured in every way `systemctl show` and
 plain `ls`/`touch` could confirm, and still failed with "unable to open
-database file" on a real Pi (see the `label-web-app` skill for the full
+database file" on a real Pi (see the `mail-intake` skill for the full
 story). `full` only touches `/usr`, `/boot` and `/etc`, so both `/run`
 (the CUPS socket) and `/opt` (the app and its mail database) just work
 without needing `ReadWritePaths` at all.
