@@ -96,6 +96,78 @@ def test_multiple_attachments_are_all_extracted():
     assert {a.filename for a in parsed.attachments} == {"a.pdf", "b.jpg"}
 
 
+# --- body text (feeds the relevance filter in mailpoll.py) ---------------
+
+def test_plain_text_body_is_captured():
+    msg = EmailMessage()
+    msg["From"] = "someone@example.com"
+    msg["Subject"] = "fyi"
+    msg.set_content("Please print this label for me, thanks!")
+
+    parsed = parse_message(bytes(msg))
+    assert "print this label" in parsed.body_text
+
+
+def test_html_only_body_is_stripped_and_captured():
+    msg = EmailMessage()
+    msg["From"] = "someone@example.com"
+    msg["Subject"] = "fyi"
+    msg.add_alternative(
+        "<html><body><p>Here is your <b>label</b>.</p></body></html>",
+        subtype="html")
+
+    parsed = parse_message(bytes(msg))
+    assert "label" in parsed.body_text
+    assert "<b>" not in parsed.body_text
+
+
+def test_plain_text_preferred_over_html_when_both_present():
+    msg = EmailMessage()
+    msg["From"] = "someone@example.com"
+    msg["Subject"] = "fyi"
+    msg.set_content("plain version")
+    msg.add_alternative("<html><body>html version</body></html>", subtype="html")
+
+    parsed = parse_message(bytes(msg))
+    assert "plain version" in parsed.body_text
+
+
+def test_script_and_style_content_does_not_leak_into_body_text():
+    """Regression for a real Google account-notification email: a browser
+    extension had injected a <style> containing "@media print" and a
+    <script> calling "window.print()" into the page. The old tag-stripping
+    regex only removed the <script>/<style> markers, not their contents, so
+    that literal text leaked into body_text and made an unrelated email look
+    relevant to the label/print filter."""
+    msg = EmailMessage()
+    msg["From"] = "Google <no-reply@google.com>"
+    msg["Subject"] = "Welcome to Google on your Mac OS"
+    msg.add_alternative(
+        "<html><head>"
+        "<style>@media print { .toolbar { display: none; } }</style>"
+        "</head><body>"
+        "<p>Get started with Google on your new device.</p>"
+        "<script>document.body.onload = function() { window.print(); };</script>"
+        "</body></html>",
+        subtype="html")
+
+    parsed = parse_message(bytes(msg))
+
+    assert "print" not in parsed.body_text.lower()
+    assert "get started with google" in parsed.body_text.lower()
+
+
+def test_no_body_at_all_gives_empty_string():
+    msg = EmailMessage()
+    msg["From"] = "someone@example.com"
+    msg["Subject"] = "fyi"
+    msg.add_attachment(b"data", maintype="application", subtype="pdf",
+                       filename="a.pdf")
+
+    parsed = parse_message(bytes(msg))
+    assert parsed.body_text == ""
+
+
 # --- fetch_new ---------------------------------------------------------
 
 class FakeIMAP:

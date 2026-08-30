@@ -15,7 +15,7 @@ import logging
 import threading
 
 from . import mail, normalize
-from .mail import MailConfig, MailError
+from .mail import MailConfig, MailError, ParsedMessage
 from .mailstore import MailStore
 from .normalize import Mode, NormalizeError
 
@@ -23,16 +23,39 @@ logger = logging.getLogger(__name__)
 
 WATERMARK_KEY = "last_uid"
 
+# A dedicated mailbox still gets the odd security alert or newsletter --
+# nobody creates an inbox that receives *only* the mail they want. A
+# printable attachment is relevant on its own regardless of wording; short
+# of that, the subject or body has to actually mention what this mailbox is
+# for. That catches "email a link" cases too without a separate check: a
+# carrier's own print/label link almost always contains one of these words
+# in its surrounding text or its own path.
+RELEVANT_KEYWORDS = ("label", "print")
+
+
+def _looks_relevant(parsed: ParsedMessage) -> bool:
+    if parsed.attachments:
+        return True
+    haystack = f"{parsed.subject}\n{parsed.body_text}".lower()
+    return any(keyword in haystack for keyword in RELEVANT_KEYWORDS)
+
 
 def poll_once(config: MailConfig, store: MailStore) -> int:
-    """Fetch whatever is new, normalize it, and store it. Returns the count."""
+    """Fetch whatever is new, normalize it, and store it. Returns how many
+    messages were stored -- an irrelevant message (see _looks_relevant)
+    still advances the watermark so it isn't re-evaluated every poll, but
+    isn't added to the history a family member actually looks at."""
     since = store.get_watermark(WATERMARK_KEY)
     messages = mail.fetch_new(config, since)
 
     highest = since
+    stored = 0
     for uid, raw in messages:
         highest = max(highest, uid)
         parsed = mail.parse_message(raw)
+
+        if not _looks_relevant(parsed):
+            continue
 
         attachments = []
         problems = []
@@ -59,10 +82,11 @@ def poll_once(config: MailConfig, store: MailStore) -> int:
             note = ""
 
         store.add_message(parsed.sender, parsed.subject, note, attachments)
+        stored += 1
 
     if highest != since:
         store.set_watermark(WATERMARK_KEY, highest)
-    return len(messages)
+    return stored
 
 
 def poll_forever(config: MailConfig, store: MailStore, interval: float,
