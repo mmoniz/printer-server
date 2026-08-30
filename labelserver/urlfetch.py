@@ -105,6 +105,19 @@ def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
             content_type = response.headers.get_content_type()
             suffix = CONTENT_TYPE_SUFFIXES.get(content_type)
             if suffix is None:
+                if content_type == "text/html":
+                    # The most common reason: the link needs an active login
+                    # session (Amazon return/shipping labels, for one) and we
+                    # got a sign-in page or error page back instead. We have
+                    # no session to offer -- but the family member's own
+                    # browser does, and dragging or pasting the rendered
+                    # image (rather than the link) already works, since that
+                    # goes through their browser's fetch, not ours.
+                    raise FetchError(
+                        "That link returned a web page instead of a file, "
+                        "which usually means it needs you to be signed in. "
+                        "Open it in your own browser instead, then drag or "
+                        "paste the label image itself onto this page.")
                 raise FetchError(
                     f"That link isn't a PDF or image "
                     f"({content_type or 'unknown type'}).")

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Mail &middot; Label Printer{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="admin-header">
+    <h2>Mail history</h2>
+    <span class="hint">{{ total_bytes|kb }} stored</span>
+  </div>
+
+  {% if not mail_configured %}
+  <p class="hint">
+    Mail polling isn't set up on this Pi yet. Configure
+    <code>LABELSERVER_MAIL_HOST</code> and friends to start receiving labels
+    by email.
+  </p>
+  {% endif %}
+
+  {% if messages %}
+  <form method="post" action="{{ url_for('admin_delete_all') }}"
+        onsubmit="return confirm('Delete all mail history? This cannot be undone.')">
+    <button type="submit" class="link-button">Delete all history</button>
+  </form>
+  {% endif %}
+</section>
+
+{% for msg in messages %}
+<section class="card mail-item">
+  <div class="mail-meta">
+    <h2>{{ msg.subject }}</h2>
+    <small>{{ msg.sender }} &middot; {{ msg.received_at|dt }}</small>
+  </div>
+
+  {% if msg.note %}
+  <p class="warn">{{ msg.note }}</p>
+  {% endif %}
+
+  {% for att in msg.attachments %}
+  <div class="mail-attachment">
+    <img src="{{ url_for('admin_preview', attachment_id=att.id) }}"
+         alt="Preview of {{ att.filename }}">
+    <div class="mail-attachment-info">
+      <p class="summary">{{ att.filename }}</p>
+      <p class="summary">{{ att.summary }}</p>
+      {% if not att.label_shaped %}
+      <p class="warn">This does not look like a 4&times;6 label.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin_use', attachment_id=att.id) }}">
+        <button type="submit" class="primary">Use this label</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="actions">
+    <form method="post" action="{{ url_for('admin_delete', mail_id=msg.id) }}">
+      <button type="submit" class="link-button">Delete</button>
+    </form>
+  </div>
+</section>
+{% else %}
+<p class="hint">No mail yet.</p>
+{% endfor %}
+{% endblock %}

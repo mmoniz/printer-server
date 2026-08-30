@@ -25,6 +25,13 @@ wifi tweaks.
 If no USB printer is detected it warns and continues, so the rest of the setup
 still completes. Plug the printer in and re-run.
 
+Also creates `/opt/labelserver/data` (where the mail history sqlite file
+lives -- see the label-web-app skill) and, if it doesn't already exist,
+`/etc/labelserver/mail.env` from `scripts/mail.env.example`. That file is
+never overwritten on a re-run, so filling it in and re-running `install.sh`
+later is safe -- your credentials survive. It ships with everything
+commented out, so mail polling is off until someone edits it in.
+
 ## The Pi 2 constrains dependencies
 
 The venv is created with `--system-site-packages` so it reuses the **apt** builds

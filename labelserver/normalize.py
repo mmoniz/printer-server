@@ -26,6 +26,10 @@ from pypdf import PdfReader, PdfWriter, Transformation
 
 LABEL_4X6 = (288.0, 432.0)  # points
 
+# What normalize_upload can actually turn into a label. Shared by the file
+# upload, URL fetch and mail intake paths so there is one place to update.
+ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
 # Rendering resolution used for locating ink. 72dpi means 1px == 1pt, which
 # keeps the coordinate maths obvious. Detection does not need detail.
 DETECT_DPI = 72
@@ -412,6 +416,7 @@ def render_preview(pdf_bytes: bytes, width_px: int = 400) -> bytes:
 
 __all__ = [
     "LABEL_4X6",
+    "ALLOWED_SUFFIXES",
     "Mode",
     "NormalizeError",
     "Result",
