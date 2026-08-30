@@ -316,14 +316,27 @@ def normalize_pdf(data: bytes, mode: Mode = Mode.AUTO, page_index: int = 0,
     if crop is None:
         x0, y0 = 0.0, 0.0
         src_w, src_h = page_w, page_h
+        # The whole page, not a guessed sub-region -- its own orientation is
+        # as good a signal as we get.
+        trust_rotation = True
     else:
         x0, y0, x1, y1 = crop
         src_w, src_h = x1 - x0, y1 - y0
+        # A cropped-out region that isn't confidently label-shaped is exactly
+        # where rotation direction becomes a coin flip: width/height alone
+        # can't say whether it needs a quarter turn clockwise or counter-
+        # clockwise, only that it isn't tall like the target. A page-
+        # segmentation misfire (a multi-section label split into bands, with
+        # one wide-but-not-label-shaped band winning by area) hits this
+        # exactly -- rotating it blind just as often makes it worse. Leaving
+        # the source's own orientation alone is the safer default; the
+        # content was virtually always authored to be read upright.
+        trust_rotation = label_shaped
 
     target_w, target_h = target
 
     # Rotate a landscape label upright so it fills the portrait stock.
-    rotate = 90 if (src_w > src_h) != (target_w > target_h) else 0
+    rotate = 90 if trust_rotation and (src_w > src_h) != (target_w > target_h) else 0
     effective_w, effective_h = (src_h, src_w) if rotate else (src_w, src_h)
 
     scale = min(target_w / effective_w, target_h / effective_h)

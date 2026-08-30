@@ -80,6 +80,30 @@ def test_rotated_page_attribute_is_honoured():
     assert ink_coverage(out) > 0.90
 
 
+def test_unconfident_crop_is_not_rotated_blind():
+    """A real UPS return label surfaced this: a tall page laid out in
+    horizontal bands (sender, ship-to, barcode block, footer) with enough
+    whitespace between them that block segmentation split it apart and
+    picked the barcode band alone as "the label" -- landscape-shaped, but
+    not a clean 4x6/6x4 match (aspect ~1.2, not ~0.67 or ~1.5).
+
+    The old rule rotated purely on width>height vs the target, so it forced
+    a 90-degree turn on this ambiguous band with no way to know if that was
+    the right direction -- and it wasn't, so the tracking barcode came out
+    sideways. This block is a minimal stand-in for that shape: reproduce it
+    with a real carrier PDF and this should stay green.
+    """
+    page_w, page_h = 300.0, 400.0
+    # A landscape block covering most of a portrait page, aspect ~1.2 --
+    # nowhere near label-shaped in either orientation.
+    data = make_pdf(page_w, page_h, [(10, 80, 280, 233)])
+
+    _, result = normalize.normalize_pdf(data)
+
+    assert not result.label_shaped
+    assert result.rotated_deg == 0
+
+
 # --- modes ---------------------------------------------------------------
 
 def test_fit_mode_never_crops(letter_with_label):
