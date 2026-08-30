@@ -11,7 +11,11 @@ User=labelserver
 Group=labelserver
 WorkingDirectory=/opt/labelserver
 Environment=LABELSERVER_QUEUE=labels
+Environment=LABELSERVER_MAIL_DB=/opt/labelserver/data/mail.db
 Environment=PYTHONUNBUFFERED=1
+# Mail polling is off unless this file sets LABELSERVER_MAIL_HOST/USER/PASSWORD.
+# The leading '-' means the unit still starts fine if the file doesn't exist.
+EnvironmentFile=-/etc/labelserver/mail.env
 
 # Port 80 so nobody has to remember a port number. CAP_NET_BIND_SERVICE lets an
 # unprivileged user bind it without running the whole app as root.
@@ -40,8 +44,10 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# Talking to cupsd goes through this socket.
-ReadWritePaths=/run/cups
+# Talking to cupsd goes through this socket. /opt/labelserver/data is where
+# the mail history sqlite file lives -- unlike PendingStore, it's meant to
+# survive a restart, so it has to actually be writable under strict mode.
+ReadWritePaths=/run/cups /opt/labelserver/data
 MemoryMax=512M
 
 [Install]

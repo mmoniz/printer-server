@@ -7,6 +7,12 @@ label came out sideways before wasting stock.
 
 Normalized labels are held in memory (not on the SD card) between preview and
 print, keyed by a random token, and expire on their own.
+
+Labels can also arrive by email -- for links that need you signed in to view
+(Amazon returns, for one), that's the fallback. A background thread polls a
+mailbox over IMAP (mail.py, mailpoll.py) and stores what it finds in
+mailstore.py, browsable from /admin. Unlike PendingStore, that history is
+meant to be looked at later, so it is persisted rather than kept in memory.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from __future__ import annotations
 import io
 import os
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
 from threading import Lock
@@ -21,8 +28,9 @@ from threading import Lock
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    send_file, url_for)
 
-from . import normalize, printing, urlfetch
-from .normalize import Mode, NormalizeError
+from . import mail, mailpoll, normalize, printing, urlfetch
+from .mailstore import MailStore
+from .normalize import ALLOWED_SUFFIXES, Mode, NormalizeError
 from .printing import PrintError
 from .urlfetch import FetchError
 
@@ -30,8 +38,6 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 PENDING_TTL_SECONDS = 30 * 60
 MAX_PENDING = 32
 MAX_COPIES = 20
-
-ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 
 @dataclass
@@ -80,7 +86,8 @@ class PendingStore:
             return self._items.pop(token, None)
 
 
-def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
+def create_app(queue: str = printing.DEFAULT_QUEUE,
+              mail_db: str = "mail.db") -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     # Only used to sign flash messages on a trusted home LAN.
@@ -88,10 +95,33 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
     app.config["QUEUE"] = queue
 
     store = PendingStore()
+    mail_store = MailStore(mail_db)
+    app.config["MAIL_STORE"] = mail_store
+
+    mail_config = None
+    host = os.environ.get("LABELSERVER_MAIL_HOST")
+    user = os.environ.get("LABELSERVER_MAIL_USER")
+    password = os.environ.get("LABELSERVER_MAIL_PASSWORD")
+    if host and user and password:
+        mail_config = mail.MailConfig(
+            host=host, username=user, password=password,
+            port=int(os.environ.get("LABELSERVER_MAIL_PORT", "993")),
+            folder=os.environ.get("LABELSERVER_MAIL_FOLDER", "INBOX"))
+        stop_event = threading.Event()
+        interval = float(os.environ.get("LABELSERVER_MAIL_POLL_SECONDS", "300"))
+        thread = threading.Thread(
+            target=mailpoll.poll_forever,
+            args=(mail_config, mail_store, interval, stop_event),
+            daemon=True)
+        thread.start()
 
     @app.template_filter("kb")
     def kb(value: int) -> str:
         return f"{value / 1024:.0f} KB"
+
+    @app.template_filter("dt")
+    def dt(value: float) -> str:
+        return time.strftime("%b %d, %Y %H:%M", time.localtime(value))
 
     def queue_banner():
         try:
@@ -215,6 +245,46 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
             flash(f"Could not cancel: {exc}", "error")
         return redirect(url_for("index"))
 
+    @app.get("/admin")
+    def admin():
+        ready, status = queue_banner()
+        return render_template("admin.html", messages=mail_store.list_messages(),
+                               total_bytes=mail_store.total_bytes(),
+                               mail_configured=mail_config is not None,
+                               ready=ready, status=status)
+
+    @app.get("/admin/preview/<int:attachment_id>.png")
+    def admin_preview(attachment_id):
+        record = mail_store.get_attachment(attachment_id)
+        if record is None:
+            abort(404)
+        return send_file(io.BytesIO(record.preview), mimetype="image/png")
+
+    @app.post("/admin/use/<int:attachment_id>")
+    def admin_use(attachment_id):
+        record = mail_store.get_attachment(attachment_id)
+        if record is None:
+            flash("That email attachment is gone.", "error")
+            return redirect(url_for("admin"))
+
+        token = store.add(Pending(pdf=record.pdf, preview=record.preview,
+                                  filename=record.filename,
+                                  summary=record.summary,
+                                  label_shaped=record.label_shaped))
+        return redirect(url_for("review", token=token))
+
+    @app.post("/admin/delete/<int:mail_id>")
+    def admin_delete(mail_id):
+        mail_store.delete_message(mail_id)
+        flash("Deleted.", "success")
+        return redirect(url_for("admin"))
+
+    @app.post("/admin/delete-all")
+    def admin_delete_all():
+        mail_store.delete_all()
+        flash("Mail history cleared.", "success")
+        return redirect(url_for("admin"))
+
     @app.get("/healthz")
     def healthz():
         ready, status = queue_banner()
@@ -230,7 +300,8 @@ def create_app(queue: str = printing.DEFAULT_QUEUE) -> Flask:
     return app
 
 
-app = create_app(os.environ.get("LABELSERVER_QUEUE", printing.DEFAULT_QUEUE))
+app = create_app(os.environ.get("LABELSERVER_QUEUE", printing.DEFAULT_QUEUE),
+                 mail_db=os.environ.get("LABELSERVER_MAIL_DB", "mail.db"))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)

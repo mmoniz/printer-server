@@ -44,6 +44,10 @@ cp -r "$REPO_DIR/labelserver" "$APP_DIR/"
 cp "$REPO_DIR/requirements.txt" "$APP_DIR/"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
+# Where the mail history sqlite file lives -- separate from the app/venv so
+# ReadWritePaths in the systemd unit doesn't have to cover the code itself.
+install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR/data"
+
 if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
     python3 -m venv --system-site-packages "$APP_DIR/venv"
 fi
@@ -122,6 +126,13 @@ install -m 644 "$REPO_DIR/scripts/labelserver.service" \
         /etc/systemd/system/labelserver.service
 sed -i "s/^Environment=LABELSERVER_QUEUE=.*/Environment=LABELSERVER_QUEUE=$QUEUE/" \
         /etc/systemd/system/labelserver.service
+
+# Mail polling stays off until this file is filled in -- see the file itself
+# for what goes in it. Never overwrite one that's already been configured.
+install -d -m 700 -o root -g root /etc/labelserver
+if [[ ! -f /etc/labelserver/mail.env ]]; then
+    install -m 600 "$REPO_DIR/scripts/mail.env.example" /etc/labelserver/mail.env
+fi
 
 systemctl daemon-reload
 systemctl enable --now labelserver

@@ -44,6 +44,9 @@ header {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--line);
   background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .brand {
@@ -52,6 +55,14 @@ header {
   color: var(--text);
   text-decoration: none;
 }
+
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: .9rem;
+}
+
+.nav-link:hover { color: var(--accent); }
 
 main {
   flex: 1;
@@ -282,3 +293,45 @@ footer {
 
 .status.ok { color: var(--ok); }
 .status.bad { color: var(--bad); }
+
+/* --- mail history ------------------------------------------------------ */
+
+.admin-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mail-item { gap: .9rem; }
+
+.mail-meta small { color: var(--muted); }
+
+.mail-attachment {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding-top: .9rem;
+  border-top: 1px solid var(--line);
+}
+
+.mail-attachment img {
+  width: 6rem;
+  flex: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.mail-attachment-info {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  min-width: 0;
+}
+
+.mail-attachment-info .summary {
+  margin: 0;
+  font-size: .85rem;
+  overflow-wrap: anywhere;
+}

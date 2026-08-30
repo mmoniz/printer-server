@@ -9,6 +9,7 @@ venv/
 # Runtime
 uploads/
 *.log
+mail.db
 
 # OS
 .DS_Store

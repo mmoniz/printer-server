@@ -61,9 +61,14 @@ def cups(monkeypatch):
 
 @pytest.fixture
 def client(cups):
-    application = app_module.create_app()
+    application = app_module.create_app(mail_db=":memory:")
     application.config.update(TESTING=True, SECRET_KEY="test")
     return application.test_client()
+
+
+@pytest.fixture
+def mail_store(client):
+    return client.application.config["MAIL_STORE"]
 
 
 class FakeUrlfetch:
@@ -273,6 +278,87 @@ def test_healthz(client, cups):
 
     cups.ready = False
     assert client.get("/healthz").status_code == 503
+
+
+# --- admin / mail history -------------------------------------------------
+
+def test_admin_page_with_no_mail_configured(client):
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert b"isn't set up" in resp.data
+    assert b"No mail yet" in resp.data
+
+
+def test_admin_lists_a_received_message_and_its_preview(client, mail_store, label_4x6):
+    from labelserver import normalize
+    pdf, result = normalize.normalize_upload(label_4x6, "label.pdf")
+    preview = normalize.render_preview(pdf)
+    mail_store.add_message("amazon@example.com", "Your return label", "",
+                           [{"filename": "label.pdf", "pdf": pdf, "preview": preview,
+                             "summary": result.describe(),
+                             "label_shaped": result.label_shaped}])
+
+    listing = client.get("/admin")
+    assert b"Your return label" in listing.data
+    assert b"amazon@example.com" in listing.data
+    assert b"label.pdf" in listing.data
+
+    attachment_id = mail_store.list_messages()[0].attachments[0].id
+    png = client.get(f"/admin/preview/{attachment_id}.png")
+    assert png.status_code == 200
+    assert png.data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_admin_shows_a_note_when_no_attachment_was_found(client, mail_store):
+    mail_store.add_message("someone@example.com", "just a link",
+                           "No PDF or image attachment found in this email.", [])
+    resp = client.get("/admin")
+    assert b"No PDF or image attachment" in resp.data
+
+
+def test_admin_use_sends_a_mail_attachment_through_the_normal_review_flow(
+        client, cups, mail_store, label_4x6):
+    from labelserver import normalize
+    pdf, result = normalize.normalize_upload(label_4x6, "label.pdf")
+    preview = normalize.render_preview(pdf)
+    mail_store.add_message("amazon@example.com", "label", "",
+                           [{"filename": "label.pdf", "pdf": pdf, "preview": preview,
+                             "summary": result.describe(),
+                             "label_shaped": result.label_shaped}])
+    attachment_id = mail_store.list_messages()[0].attachments[0].id
+
+    resp = client.post(f"/admin/use/{attachment_id}", follow_redirects=False)
+    token = token_from(resp)
+
+    review = client.get(f"/review/{token}")
+    assert review.status_code == 200
+
+    client.post(f"/print/{token}")
+    assert cups.submitted[0]["pdf"] == pdf
+
+
+def test_admin_use_with_unknown_attachment_is_handled(client):
+    resp = client.post("/admin/use/999", follow_redirects=True)
+    assert b"gone" in resp.data
+
+
+def test_admin_delete_removes_one_message(client, mail_store):
+    mail_store.add_message("a@example.com", "keep", "", [])
+    doomed = mail_store.add_message("b@example.com", "delete me", "", [])
+
+    client.post(f"/admin/delete/{doomed}")
+
+    subjects = [m.subject for m in mail_store.list_messages()]
+    assert subjects == ["keep"]
+
+
+def test_admin_delete_all_clears_history(client, mail_store):
+    mail_store.add_message("a@example.com", "one", "", [])
+    mail_store.add_message("b@example.com", "two", "", [])
+
+    client.post("/admin/delete-all")
+
+    assert mail_store.list_messages() == []
 
 
 # --- pending store -------------------------------------------------------
