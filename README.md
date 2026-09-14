@@ -123,6 +123,29 @@ picks these up automatically; they read fine as plain Markdown too.
 See [CLAUDE.md](CLAUDE.md) for the fuller map and the conventions that span
 all of them.
 
+## Printing from Windows
+
+CUPS already shares the queue over IPP to the whole LAN (`install.sh` sets
+`Listen *:631` and `Allow @LOCAL`) -- the gap is discovery, not access.
+AirPrint and the Mac "Nearby Printers" list both work over Bonjour/mDNS,
+which Windows doesn't speak out of the box, so the printer never shows up on
+its own. Two ways to fix that, in order of effort:
+
+1. **Add it directly, no install required.** Windows 10/11 ship a generic
+   IPP client driver. Settings → Bluetooth & devices → Printers & scanners →
+   Add device → "The printer that I want isn't listed" → "Select a shared
+   printer by name", and enter:
+   ```
+   http://label-printer-server.local:631/printers/labels
+   ```
+   (swap in the Pi's IP if `.local` doesn't resolve on that PC). Windows
+   fetches the driver info over IPP itself -- nothing to download.
+2. **Get automatic discovery like AirPrint.** Install "Bonjour Print
+   Services for Windows" from Apple's support site (search for it directly;
+   it's a small, official download -- the print-only half of iTunes' old
+   Bonjour service). Once it's running, the printer appears in Add Printer
+   on its own, the same way it does on a Mac.
+
 ## Fitting labels to 4x6
 
 Carrier PDFs come in three shapes, and the web app handles each:

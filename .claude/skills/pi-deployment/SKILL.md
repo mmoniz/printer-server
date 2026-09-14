@@ -70,6 +70,22 @@ moment of each restart or reboot. That file is what to pull up first after a
 recovery: it shows what the link looked like right when the watchdog gave up
 on it, not just that it happened.
 
+**The Pi renames itself off `label-printer-server.local` after a reboot.**
+`avahi-daemon.service` ships with no ordering against the network at all --
+it starts as part of `multi-user.target` and can begin probing for the
+hostname while `wlan0` is still associating. If a cached record from before
+the reboot is still live somewhere on the LAN, avahi loses that race and
+renames itself `label-printer-server-2`, `-3`, and so on, sticking with the
+suffix until the next restart. `install.sh` now installs
+`avahi-hostname-stability.conf` (`After=network-online.target` plus an
+`ExecStartPre` that kills any wedged avahi process first) and turns off
+`use-ipv6` in `avahi-daemon.conf`, since IPv6 privacy-address churn on
+`wlan0` was happening in the same window as the renames and this box is only
+ever discovered over IPv4 on the LAN anyway. Confirm the current name with
+`hostname` and `systemctl status avahi-daemon` (its process title shows
+`avahi-daemon: running [name]`); `journalctl -u avahi-daemon | grep -i
+conflict` shows whether and when it last happened.
+
 **The printer stops responding after being idle.** Cheap thermal printers let
 the host suspend them and then fail to wake, which presents as a queue that
 accepts a job and never prints it. `99-labelprinter.rules` disables autosuspend

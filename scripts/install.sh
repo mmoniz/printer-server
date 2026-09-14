@@ -118,6 +118,22 @@ systemctl restart cups
 say "Advertising the queue over AirPrint"
 "$REPO_DIR/scripts/airprint.sh" "$QUEUE"
 
+# Keep the mDNS hostname stable across reboots. Without this, avahi can
+# start probing for the hostname before wlan0 has even associated, lose a
+# race against a stale cached record elsewhere on the LAN, and rename
+# itself label-printer-server-2/-3/... until the next restart. See the
+# drop-in file and the pi-deployment skill for the full story.
+say "Stabilizing the mDNS hostname"
+install -d /etc/systemd/system/avahi-daemon.service.d
+install -m 644 "$REPO_DIR/scripts/avahi-hostname-stability.conf" \
+        /etc/systemd/system/avahi-daemon.service.d/hostname-stability.conf
+
+# IPv6 privacy-address churn on wlan0 was happening in the same window as
+# the renames; this server is only ever discovered over IPv4 on the LAN, so
+# there's no reason to give avahi IPv6 addresses to juggle at all.
+sed -i 's/^use-ipv6=yes/use-ipv6=no/' /etc/avahi/avahi-daemon.conf
+
+systemctl daemon-reload
 systemctl enable --now avahi-daemon
 systemctl restart avahi-daemon
 

@@ -51,6 +51,24 @@ no attachment, or one that fails to normalize, is still recorded (with a
 `note` explaining why) rather than silently dropped; "the email arrived but
 nothing came of it" is exactly the kind of thing this history exists to show.
 
+## Auto-print
+
+`LABELSERVER_MAIL_AUTOPRINT=1` (`mail.env`, off by default) makes
+`poll_once` submit an attachment straight to CUPS instead of only leaving it
+in `/admin` for someone to press Print. The gate is `result.label_shaped` --
+the same boolean `normalize.py` already uses internally to decide whether a
+crop is trustworthy (`trust_rotation = label_shaped`), not a separate
+confidence metric. A page that's clearly a 4x6 label prints itself; a full
+page, a photo, or anything the crop heuristic wasn't confident about still
+waits in the admin history for a human, because a silent wrong guess wastes
+stock in a way a queued item never does. The message is still stored either
+way -- auto-printed or not -- with the note recording which attachments were
+sent and their CUPS job id, so `/admin` stays the audit trail even when
+nobody had to look at it to get the label printed. A `PrintError` during
+auto-print (queue down, disabled, etc.) is folded into the same `note` field
+used for unreadable attachments, not raised -- one bad print attempt
+shouldn't take down the poll loop.
+
 ## The relevance filter
 
 Nobody creates a mailbox that receives *only* mail they want -- even a

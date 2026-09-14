@@ -18,6 +18,7 @@ import pytest
 from labelserver import mailpoll
 from labelserver.mail import Attachment, MailConfig, MailError, ParsedMessage, parse_message
 from labelserver.mailstore import MailStore
+from labelserver.printing import PrintError
 
 CONFIG = MailConfig(host="imap.example.com", username="labels@example.com",
                     password="app-password")
@@ -226,6 +227,84 @@ def test_poll_forever_stops_when_the_event_is_set(store, fake_mail):
     stop.set()
     thread.join(timeout=2)
     assert not thread.is_alive()
+
+
+# --- auto-print -----------------------------------------------------------
+
+class FakeCups:
+    def __init__(self):
+        self.submitted = []
+        self.fail_with = None
+
+    def submit(self, pdf, queue="labels", title="label", copies=1,
+              darkness=None, media="4x6.Fullbleed"):
+        if self.fail_with:
+            raise PrintError(self.fail_with)
+        self.submitted.append({"pdf": pdf, "queue": queue, "title": title})
+        return f"{queue}-{len(self.submitted)}"
+
+
+@pytest.fixture
+def cups(monkeypatch):
+    fake = FakeCups()
+    monkeypatch.setattr(mailpoll.printing, "submit", fake.submit)
+    return fake
+
+
+def test_auto_print_off_by_default_leaves_it_in_the_queue(store, fake_mail, cups, label_4x6):
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+
+    mailpoll.poll_once(CONFIG, store)
+
+    assert cups.submitted == []
+    assert store.list_messages()[0].note == ""
+
+
+def test_auto_print_sends_a_confidently_shaped_label(store, fake_mail, cups, label_4x6):
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+
+    mailpoll.poll_once(CONFIG, store, auto_print=True, queue="labels")
+
+    assert len(cups.submitted) == 1
+    assert cups.submitted[0]["title"] == "a.pdf"
+    assert "Auto-printed a.pdf (job labels-1)" in store.list_messages()[0].note
+
+
+def test_auto_print_skips_an_attachment_that_is_not_confidently_a_label(
+        store, fake_mail, cups):
+    from conftest import make_pdf
+    square = make_pdf(300, 300, [(8, 8, 284, 284)])
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=square)])}
+
+    mailpoll.poll_once(CONFIG, store, auto_print=True)
+
+    assert cups.submitted == []
+    assert store.list_messages()[0].note == ""
+
+
+def test_auto_print_failure_is_noted_not_raised(store, fake_mail, cups, label_4x6):
+    cups.fail_with = "the 'labels' queue is rejecting jobs"
+    raw = b"raw"
+    fake_mail.messages = [(1, raw)]
+    fake_mail.parsed = {raw: ParsedMessage(
+        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+
+    count = mailpoll.poll_once(CONFIG, store, auto_print=True)
+
+    assert count == 1
+    assert cups.submitted == []
+    note = store.list_messages()[0].note
+    assert "could not auto-print" in note
+    assert "a.pdf" in note
 
 
 def test_poll_forever_survives_a_mail_error(store, fake_mail):

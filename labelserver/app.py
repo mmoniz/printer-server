@@ -109,9 +109,12 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
             folder=os.environ.get("LABELSERVER_MAIL_FOLDER", "INBOX"))
         stop_event = threading.Event()
         interval = float(os.environ.get("LABELSERVER_MAIL_POLL_SECONDS", "300"))
+        auto_print = os.environ.get(
+            "LABELSERVER_MAIL_AUTOPRINT", "").strip().lower() in ("1", "true", "yes")
         thread = threading.Thread(
             target=mailpoll.poll_forever,
             args=(mail_config, mail_store, interval, stop_event),
+            kwargs={"auto_print": auto_print, "queue": queue},
             daemon=True)
         thread.start()
 
