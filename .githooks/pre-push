@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Refuse direct pushes to the default branch. Changes reach it only through PRs.
+# The server-side ruleset is the real enforcement; this hook fails fast locally
+# and covers repos where rulesets aren't available.
+# Enable once per clone: git config core.hooksPath .githooks
+
+default=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+[ -z "$default" ] && default=main
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/$default" ]; then
+    echo "pre-push: direct pushes to '$default' are blocked. Push a <prefix>/<desc> branch and open a PR." >&2
+    exit 1
+  fi
+done
+exit 0

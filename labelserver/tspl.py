@@ -39,6 +39,8 @@ _F_COLOR_SPACE = 400
 _F_COMPRESSION = 404
 
 _COLORSPACE_GRAY = 0
+BITS_PER_GRAY_PIXEL = 8  # the only raster depth the filter accepts
+MEDIA_TRACKING_CONTINUOUS = "continuous"  # PPD zeMediaTracking value: no gaps
 
 POINTS_PER_MM = 72.0 / 25.4
 
@@ -75,14 +77,15 @@ class Settings:
             except (KeyError, ValueError):
                 return default
 
-        gap = 0 if opts.get("zemediatracking", "").lower() == "continuous" else 3
+        tracking = opts.get("zemediatracking", "").lower()
+        gap = 0 if tracking == MEDIA_TRACKING_CONTINUOUS else cls.gap_mm
         return cls(
-            darkness=as_int("darkness", 6),
-            speed=as_int("zeprintrate", 4),
+            darkness=as_int("darkness", cls.darkness),
+            speed=as_int("zeprintrate", cls.speed),
             gap_mm=as_int("gap", gap),
-            offset_mm=as_int("feedoffset", 0),
-            adjust_x=as_int("adjusthoriaontal", as_int("adjusthorizontal", 0)),
-            adjust_y=as_int("adjustvertical", 0),
+            offset_mm=as_int("feedoffset", cls.offset_mm),
+            adjust_x=as_int("adjusthoriaontal", as_int("adjusthorizontal", cls.adjust_x)),
+            adjust_y=as_int("adjustvertical", cls.adjust_y),
             copies=max(1, copies),
         )
 
@@ -124,7 +127,10 @@ def read_pages(raster: bytes) -> Iterator[Page]:
 
         if field(_F_COMPRESSION) != 0:
             raise RasterError("compressed rasters are not supported")
-        if field(_F_BITS_PER_PIXEL) != 8 or field(_F_BITS_PER_COLOR) != 8:
+        if (
+            field(_F_BITS_PER_PIXEL) != BITS_PER_GRAY_PIXEL
+            or field(_F_BITS_PER_COLOR) != BITS_PER_GRAY_PIXEL
+        ):
             raise RasterError("expected 8 bits per pixel")
         if field(_F_COLOR_SPACE) != _COLORSPACE_GRAY:
             raise RasterError("expected a grayscale raster")

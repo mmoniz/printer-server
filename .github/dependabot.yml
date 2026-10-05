@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # uv.lock and pyproject.toml. The Pi installs from requirements.txt, which
+  # tests/test_dependencies.py keeps in step with pyproject.toml.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -2,8 +2,11 @@
 name: pi-deployment
 description: Installing and running the label server on the Raspberry Pi, plus the hardware failure modes this setup is prone to. Use this whenever you touch scripts/install.sh, the systemd units, the udev rules, scripts/testprint.sh, or diagnose "nothing prints", "the Pi vanished from the network", "can't ssh into the Pi", "the printer stopped responding", or labels coming out misaligned. Read this before adding a runtime dependency — the Pi 2 constrains what can be installed.
 ---
+<!-- component-paths: scripts/install.sh scripts/airprint.sh scripts/testprint.sh scripts/network-watchdog.sh scripts/network-watchdog.logrotate scripts/network-watchdog.service scripts/network-watchdog.timer scripts/wifi-powersave-off.service scripts/99-labelprinter.rules scripts/avahi-hostname-stability.conf scripts/labelserver.service tests/test_network_watchdog.py tests/test_service_config.py tests/test_dependencies.py -->
 
 # Deploying on the Pi
+
+## Overview
 
 Target: Raspberry Pi 2 (armv7, 32-bit, 1 GB RAM), Raspberry Pi OS Lite
 Bookworm, USB wifi dongle, printer on USB.
@@ -15,7 +18,13 @@ sudo ./scripts/install.sh
 Idempotent — safe to re-run after any change. `QUEUE=` and `APP_USER=`
 override the defaults.
 
-## What install.sh does
+This component owns installing, the systemd units and udev rules, and the
+hardware and network failure modes. The queue and PPD it creates belong to
+`cups-print-chain`.
+
+## How it works
+
+### What install.sh does
 
 Packages → `labelserver` system user (in `lpadmin`) → app to `/opt/labelserver`
 → filter and PPD into the CUPS directories → queue against the first USB
@@ -32,7 +41,7 @@ never overwritten on a re-run, so filling it in and re-running `install.sh`
 later is safe -- your credentials survive. It ships with everything
 commented out, so mail polling is off until someone edits it in.
 
-## The Pi 2 constrains dependencies
+### The Pi 2 constrains dependencies
 
 The venv is created with `--system-site-packages` so it reuses the **apt** builds
 of numpy and Pillow. Compiling those from source on a Pi 2 takes a very long
@@ -40,12 +49,120 @@ time. Before adding a runtime dependency, check it has an armv7 wheel or an apt
 package — `pypdfium2` was chosen partly because it publishes
 `manylinux_2_17_armv7l`.
 
+A new runtime dependency goes in **both** `requirements.txt` (what the Pi installs)
+and `pyproject.toml` (what `uv.lock` is built from, for CI and development);
+`tests/test_dependencies.py` fails if they differ. The Pi itself still resolves
+from `requirements.txt`'s `>=` floors and apt, so it can run versions CI never
+tested (TECH-DEBT TD-3).
+
 The CUPS filter is a separate case: it runs as the `lp` user under the **system**
 Python, not the venv. Its imports must be satisfied system-wide, which is why
 `python3-numpy` is an apt dependency and `install.sh` verifies `import numpy`
 before finishing.
 
-## Five failure modes worth knowing about
+### The service
+
+`labelserver.service` runs gunicorn (1 worker, 4 threads -- see the
+`label-web-app` skill for why it's stuck at one worker) on port 80 as an
+unprivileged user, using `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind the
+low port without running as root. Hardened with `ProtectSystem=full`,
+`NoNewPrivileges` and a `MemoryMax` of 512M. Deliberately `full`, not
+`strict` -- `strict` plus a `ReadWritePaths` entry for the mail database
+directory looked correctly configured in every way `systemctl show` and
+plain `ls`/`touch` could confirm, and still failed with "unable to open
+database file" on a real Pi (see the `mail-intake` skill for the full
+story). `full` only touches `/usr`, `/boot` and `/etc`, so both `/run`
+(the CUPS socket) and `/opt` (the app and its mail database) just work
+without needing `ReadWritePaths` at all.
+
+```bash
+systemctl status labelserver
+journalctl -u labelserver -f
+curl -s localhost/healthz
+```
+
+### Verifying a fresh install
+
+1. `lpstat -p labels` — queue exists and is idle
+2. `./scripts/testprint.sh --raw` — hardware works
+3. `./scripts/testprint.sh` — CUPS works
+4. Upload a real carrier PDF through the web page and check the preview
+5. Print from a Mac, then an iPhone — proves sharing and Avahi
+6. **Reboot and repeat 1-5.** Most of this is boot-time wiring, and a reboot is
+   the only honest test of it.
+
+### Diagnosing "the Pi is unreachable"
+
+Cheapest checks first, before assuming the worst:
+
+1. **Plug an Ethernet cable into the Pi's built-in port**, straight to the
+   router. This isolates "wifi didn't reconnect" from "the Pi is hung" in one
+   step — if it shows up wired, everything downstream is fine and the wifi
+   dongle is the problem.
+2. **From another machine, check what's actually advertised**, not just the
+   hostname: `ping <host>.local` failing only proves DNS/mDNS resolution
+   failed. Browsing mDNS service types (e.g. `dns-sd -B _ssh._tcp local.` on a
+   Mac, a few seconds is enough) tells you more — if *nothing* comes back, not
+   even `_ssh._tcp`, the whole network stack never came up, since `sshd`
+   doesn't depend on this app at all. If only `_http._tcp`/`_ipp._tcp` are
+   missing, it's app- or CUPS-specific instead; see the `cups-print-chain`
+   skill.
+3. **Once you're back in** (via Ethernet, a monitor, or after a manual power
+   cycle), read the trail the watchdogs left before doing anything else:
+   - `journalctl -b -1 -e` — the previous boot's last messages. This is the
+     only way to see what led up to a hang, and only works because `install.sh`
+     made the journal persistent; on an older install it may be empty.
+   - `/var/log/network-watchdog.log` — did the network watchdog fire? Each
+     escalation entry has a snapshot (`ip addr`, `iw link`, `rfkill`, `dmesg`)
+     captured at the moment it gave up, which usually shows whether the
+     dongle actually lost association or something else was going on.
+   - `systemctl status wifi-powersave-off network-watchdog.timer` — confirms
+     both are actually active on this Pi. If either watchdog was added after
+     the last `install.sh` run, it won't be running yet.
+4. **If it came back on its own with no watchdog entries at all**, the
+   watchdogs likely aren't installed on this Pi yet, or the outage was too
+   short to hit their thresholds (a few minutes for the network watchdog,
+   ~10 for the hardware one) — re-run `sudo ./scripts/install.sh` and reboot
+   once to make sure they're wired up before the next outage.
+5. **If nothing above explains it and repeated reboots don't help**, suspect
+   the SD card itself: pull it, run `fsck` on another machine, or reflash.
+
+### Diagnosing "nothing prints"
+
+Start by splitting the stack in half:
+
+```bash
+./scripts/testprint.sh --raw
+```
+
+This writes TSPL straight to `/dev/usb/lp0` — no CUPS, no filter, no queue. The
+test label has a full border, corner boxes and a centre bar, so alignment
+problems are visible at a glance.
+
+- **A label comes out** → the printer, cable and power are fine. The problem is
+  the queue or the filter; see the `cups-print-chain` skill.
+- **Nothing comes out** → printer, cable or power. Check `ls -l /dev/usb/`.
+
+Without `--raw` the same label goes through the queue with `lp -o raw`, which
+tests CUPS while still bypassing the filter — useful for narrowing further.
+
+### Tuning against real stock
+
+Three things can only be settled with the printer in hand, and all three are
+configuration rather than code:
+
+| Symptom | Fix |
+|---|---|
+| Labels creep or come out short | `GAP 3 mm` assumes gap-separated stock. Set Media Tracking to Continuous for continuous rolls. |
+| Print sits off-centre | Horizontal/Vertical Offset options on the queue; they feed TSPL `REFERENCE`. |
+| Too faint or too scorched | Darkness (0-15), per job from the web app or as a queue default. |
+
+Resist changing constants in `tspl.py` for these — the PPD options exist so the
+same code serves different stock.
+
+## Gotchas
+
+### Five failure modes worth knowing about
 
 These are the ones that cost an evening if you don't know them.
 
@@ -116,102 +233,64 @@ history that would explain the hang. After one fires, `journalctl -b -1 -e`
 shows the previous boot's tail — often the last thing that happened before
 things went quiet.
 
-## Diagnosing "the Pi is unreachable"
+## Decisions
 
-Cheapest checks first, before assuming the worst:
+Newest first. Don't delete entries. When a decision is replaced, mark it superseded.
 
-1. **Plug an Ethernet cable into the Pi's built-in port**, straight to the
-   router. This isolates "wifi didn't reconnect" from "the Pi is hung" in one
-   step — if it shows up wired, everything downstream is fine and the wifi
-   dongle is the problem.
-2. **From another machine, check what's actually advertised**, not just the
-   hostname: `ping <host>.local` failing only proves DNS/mDNS resolution
-   failed. Browsing mDNS service types (e.g. `dns-sd -B _ssh._tcp local.` on a
-   Mac, a few seconds is enough) tells you more — if *nothing* comes back, not
-   even `_ssh._tcp`, the whole network stack never came up, since `sshd`
-   doesn't depend on this app at all. If only `_http._tcp`/`_ipp._tcp` are
-   missing, it's app- or CUPS-specific instead; see the `cups-print-chain`
-   skill.
-3. **Once you're back in** (via Ethernet, a monitor, or after a manual power
-   cycle), read the trail the watchdogs left before doing anything else:
-   - `journalctl -b -1 -e` — the previous boot's last messages. This is the
-     only way to see what led up to a hang, and only works because `install.sh`
-     made the journal persistent; on an older install it may be empty.
-   - `/var/log/network-watchdog.log` — did the network watchdog fire? Each
-     escalation entry has a snapshot (`ip addr`, `iw link`, `rfkill`, `dmesg`)
-     captured at the moment it gave up, which usually shows whether the
-     dongle actually lost association or something else was going on.
-   - `systemctl status wifi-powersave-off network-watchdog.timer` — confirms
-     both are actually active on this Pi. If either watchdog was added after
-     the last `install.sh` run, it won't be running yet.
-4. **If it came back on its own with no watchdog entries at all**, the
-   watchdogs likely aren't installed on this Pi yet, or the outage was too
-   short to hit their thresholds (a few minutes for the network watchdog,
-   ~10 for the hardware one) — re-run `sudo ./scripts/install.sh` and reboot
-   once to make sure they're wired up before the next outage.
-5. **If nothing above explains it and repeated reboots don't help**, suspect
-   the SD card itself: pull it, run `fsck` on another machine, or reflash.
+### 2026-10-05 — Keep the Pi on Python 3.11 (Bookworm) for now, and lock for CI only
 
-## Diagnosing "nothing prints"
+- **Context:** The standards audit (ENG-03, ENG-04, ENG-07) found no Python pin and no lockfile. Raspberry Pi OS Bookworm ships Python 3.11.2 and is now listed as Legacy, with Trixie (Python 3.13.5) available as a 32-bit Lite image. Python 3.11 gets security fixes until 2027-10 (devguide.python.org/versions, checked 2026-10-05). numpy 2.5 requires Python 3.12 or newer, so a 3.11 lock resolves numpy 2.4.
+- **Decision:** `.python-version` pins 3.11, `pyproject.toml` has `requires-python = ">=3.11"` and a `uv.lock`, and CI installs from the lock on that Python. `requirements.txt` remains what `install.sh` installs on the Pi. Moving to Trixie is logged as TD-2, not done here.
+- **Why:** CI should run the interpreter the Pi runs. A runtime upgrade would also need testing on the real Pi 2, which can't be done from CI.
+- **Alternatives considered:** Pinning 3.14 (the latest stable) to match a development machine, which tests a different interpreter than production. Locking `requirements.txt` with hashes, which would fight apt's numpy and Pillow.
+- **Status:** active
 
-Start by splitting the stack in half:
+### 2026-09-14 — Order avahi after the network and drop IPv6 mDNS
 
-```bash
-./scripts/testprint.sh --raw
-```
+- **Context:** The Pi renamed itself `label-printer-server-2` after reboots, because avahi started probing while `wlan0` was still associating (commit bf570ac).
+- **Decision:** `avahi-hostname-stability.conf` orders avahi after `network-online.target` and kills a wedged process first, and `use-ipv6` is off in `avahi-daemon.conf`.
+- **Why:** Avahi ships with no ordering against the network and loses the race against a cached record. IPv6 privacy-address churn happened in the same window, and the box is only discovered over IPv4 on the LAN.
+- **Alternatives considered:** > TODO(history): not recorded.
+- **Status:** active
 
-This writes TSPL straight to `/dev/usb/lp0` — no CUPS, no filter, no queue. The
-test label has a full border, corner boxes and a centre bar, so alignment
-problems are visible at a glance.
+### 2026-08-29 — Watchdogs and a persistent journal
 
-- **A label comes out** → the printer, cable and power are fine. The problem is
-  the queue or the filter; see the `cups-print-chain` skill.
-- **Nothing comes out** → printer, cable or power. Check `ls -l /dev/usb/`.
+- **Context:** A cold boot left the wifi dongle off the network (commit 6033280), a power event could stall a boot on fsck with nobody to power-cycle the Pi (29ce906), and journald in tmpfs erased the history that would explain a hang (9b54246).
+- **Decision:** A network watchdog pings the gateway and escalates to a restart and then a reboot, logging each step and a diagnostic snapshot to `/var/log/network-watchdog.log`. The hardware watchdog is enabled (`dtparam=watchdog=on` and a systemd drop-in), and the journal is persistent, capped at 200M.
+- **Why:** A background process failing silently at 2 AM is worse than a slower failure with a log line explaining why.
+- **Alternatives considered:** > TODO(history): not recorded.
+- **Status:** active
 
-Without `--raw` the same label goes through the queue with `lp -o raw`, which
-tests CUPS while still bypassing the filter — useful for narrowing further.
+### 2026-08-09 — Reuse apt's numpy and Pillow through `--system-site-packages`
 
-## Tuning against real stock
+- **Context:** Compiling numpy and Pillow from source on a Pi 2 takes a very long time (commit 1ea7c5f).
+- **Decision:** The venv is created with `--system-site-packages`. `pypdfium2` was chosen partly because it publishes `manylinux_2_17_armv7l`. The CUPS filter uses the system Python, so `python3-numpy` is an apt dependency and `install.sh` verifies `import numpy`.
+- **Why:** Nothing needs compiling on the Pi.
+- **Alternatives considered:** Building from source, or a different PDF library without an armv7 wheel.
+- **Status:** active
 
-Three things can only be settled with the printer in hand, and all three are
-configuration rather than code:
+### 2026-08-09 — Turn off wifi power saving and USB autosuspend
 
-| Symptom | Fix |
-|---|---|
-| Labels creep or come out short | `GAP 3 mm` assumes gap-separated stock. Set Media Tracking to Continuous for continuous rolls. |
-| Print sits off-centre | Horizontal/Vertical Offset options on the queue; they feed TSPL `REFERENCE`. |
-| Too faint or too scorched | Darkness (0-15), per job from the web app or as a queue default. |
+- **Context:** USB wifi dongles sleep and only wake when the Pi sends traffic, and cheap thermal printers let the host suspend them and fail to wake (commit 1ea7c5f).
+- **Decision:** `wifi-powersave-off.service` disables power saving on every `wl*` interface at boot, and `99-labelprinter.rules` disables autosuspend for printer-class USB devices.
+- **Why:** Without them the Pi looks dead from other devices, or a queue accepts a job and never prints it.
+- **Alternatives considered:** > TODO(history): not recorded.
+- **Status:** active
 
-Resist changing constants in `tspl.py` for these — the PPD options exist so the
-same code serves different stock.
+## Trade-offs
 
-## The service
+A Pi 2 on wifi with a USB printer is cheap and fits the house, and the price is
+a pile of defensive wiring (watchdogs, power-save and autosuspend overrides)
+for hardware that fails quietly. We accept a runtime frozen to what Pi OS
+Bookworm ships, and a CI that tests the lockfile's versions rather than the
+Pi's apt ones. We'd reconsider if the Pi 2 can't run Trixie (TD-2), or if the
+wifi dongle's undervoltage drops (see the 2026-10-04 outage) point at replacing
+the power supply or moving to Ethernet.
 
-`labelserver.service` runs gunicorn (1 worker, 4 threads -- see the
-`label-web-app` skill for why it's stuck at one worker) on port 80 as an
-unprivileged user, using `AmbientCapabilities=CAP_NET_BIND_SERVICE` to bind the
-low port without running as root. Hardened with `ProtectSystem=full`,
-`NoNewPrivileges` and a `MemoryMax` of 512M. Deliberately `full`, not
-`strict` -- `strict` plus a `ReadWritePaths` entry for the mail database
-directory looked correctly configured in every way `systemctl show` and
-plain `ls`/`touch` could confirm, and still failed with "unable to open
-database file" on a real Pi (see the `mail-intake` skill for the full
-story). `full` only touches `/usr`, `/boot` and `/etc`, so both `/run`
-(the CUPS socket) and `/opt` (the app and its mail database) just work
-without needing `ReadWritePaths` at all.
+## Related
 
-```bash
-systemctl status labelserver
-journalctl -u labelserver -f
-curl -s localhost/healthz
-```
-
-## Verifying a fresh install
-
-1. `lpstat -p labels` — queue exists and is idle
-2. `./scripts/testprint.sh --raw` — hardware works
-3. `./scripts/testprint.sh` — CUPS works
-4. Upload a real carrier PDF through the web page and check the preview
-5. Print from a Mac, then an iPhone — proves sharing and Avahi
-6. **Reboot and repeat 1-5.** Most of this is boot-time wiring, and a reboot is
-   the only honest test of it.
+- `cups-print-chain`: what `install.sh` places, and the stuck-job commands.
+- `tspl-printer-protocol`: `scripts/testprint.sh --raw` bypasses CUPS to test the printer.
+- `mail-intake`: the data directory, `mail.env`, and why the unit uses `ProtectSystem=full`.
+- `label-web-app`: why the service runs one gunicorn worker.
+- TECH-DEBT.md: TD-2 (Python and Bookworm), TD-3 (CI versus the Pi's apt versions).

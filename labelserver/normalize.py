@@ -33,6 +33,11 @@ ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 # Rendering resolution used for locating ink. 72dpi means 1px == 1pt, which
 # keeps the coordinate maths obvious. Detection does not need detail.
 DETECT_DPI = 72
+POINTS_PER_INCH = 72  # PDF user space
+PRINT_DPI = 203.0  # the printer's native resolution
+REVIEW_PREVIEW_WIDTH_PX = 420  # the preview shown on the review page
+LABEL_SHAPED_WEIGHT = 3.0  # how much a label-shaped block outweighs others of the same area
+QUARTER_TURN = 90
 
 # Pixels at or below this gray level count as ink (0 = black, 255 = white).
 INK_THRESHOLD = 245
@@ -92,10 +97,10 @@ class Result:
 
     def describe(self) -> str:
         w, h = self.source_size_pt
-        bits = [f"source {w / 72:.2f}x{h / 72:.2f}in"]
+        bits = [f"source {w / POINTS_PER_INCH:.2f}x{h / POINTS_PER_INCH:.2f}in"]
         if self.cropped:
             x0, y0, x1, y1 = self.crop_box_pt
-            bits.append(f"cropped to {(x1 - x0) / 72:.2f}x{(y1 - y0) / 72:.2f}in")
+            bits.append(f"cropped to {(x1 - x0) / POINTS_PER_INCH:.2f}x{(y1 - y0) / POINTS_PER_INCH:.2f}in")
         if self.rotated_deg:
             bits.append(f"rotated {self.rotated_deg}°")
         bits.append(f"scaled {self.scale * 100:.0f}%")
@@ -115,7 +120,7 @@ def _render_gray(page_bytes: bytes, page_index: int, dpi: int) -> np.ndarray:
     try:
         if page_index >= len(doc):
             raise NormalizeError(f"page {page_index + 1} does not exist")
-        bitmap = doc[page_index].render(scale=dpi / 72, grayscale=True)
+        bitmap = doc[page_index].render(scale=dpi / POINTS_PER_INCH, grayscale=True)
         return np.asarray(bitmap.to_pil().convert("L"))
     finally:
         doc.close()
@@ -196,7 +201,7 @@ def _score_block(box, page_area: float) -> float:
         return 0.0  # a rule or a fold line
 
     # Prefer big blocks, and strongly prefer ones shaped like a 4x6 label.
-    return area * (3.0 if _is_label_shaped(w, h) else 1.0)
+    return area * (LABEL_SHAPED_WEIGHT if _is_label_shaped(w, h) else 1.0)
 
 
 def find_label_region(gray: np.ndarray, min_gap: int,
@@ -241,7 +246,7 @@ def _detect_crop(pdf_bytes: bytes, page_index: int, page_w: float, page_h: float
     if not (gray <= INK_THRESHOLD).any():
         raise NormalizeError("the page appears to be blank")
 
-    min_gap = round(BLOCK_GAP * DETECT_DPI / 72)
+    min_gap = round(BLOCK_GAP * DETECT_DPI / POINTS_PER_INCH)
     box = find_label_region(gray, min_gap)
     if box is None:
         raise NormalizeError("the page appears to be blank")
@@ -336,7 +341,7 @@ def normalize_pdf(data: bytes, mode: Mode = Mode.AUTO, page_index: int = 0,
     target_w, target_h = target
 
     # Rotate a landscape label upright so it fills the portrait stock.
-    rotate = 90 if trust_rotation and (src_w > src_h) != (target_w > target_h) else 0
+    rotate = QUARTER_TURN if trust_rotation and (src_w > src_h) != (target_w > target_h) else 0
     effective_w, effective_h = (src_h, src_w) if rotate else (src_w, src_h)
 
     scale = min(target_w / effective_w, target_h / effective_h)
@@ -345,7 +350,7 @@ def normalize_pdf(data: bytes, mode: Mode = Mode.AUTO, page_index: int = 0,
     # centre what is left on the label.
     transform = Transformation().translate(-x0, -y0)
     if rotate:
-        transform = transform.rotate(90).translate(src_h, 0)
+        transform = transform.rotate(QUARTER_TURN).translate(src_h, 0)
     transform = transform.scale(scale, scale)
     transform = transform.translate(
         (target_w - effective_w * scale) / 2,
@@ -388,7 +393,7 @@ def image_to_pdf(data: bytes) -> bytes:
     # Assume 203dpi so a label-sized image lands at roughly label size; the
     # scale-to-fit step corrects anything else.
     out = io.BytesIO()
-    img.save(out, format="PDF", resolution=203.0)
+    img.save(out, format="PDF", resolution=PRINT_DPI)
     return out.getvalue()
 
 

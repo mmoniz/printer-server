@@ -27,6 +27,10 @@ from email.policy import default as email_policy
 
 from .normalize import ALLOWED_SUFFIXES
 
+IMAP_OK = "OK"  # the status word imaplib returns when a command succeeded
+PLAIN_TEXT = "text/plain"
+HTML_TEXT = "text/html"
+
 
 class MailError(Exception):
     """The mailbox could not be reached or read."""
@@ -74,11 +78,11 @@ def fetch_new(config: MailConfig, since_uid: int) -> list[tuple[int, bytes]]:
             raise MailError(f"Could not log in: {exc}") from exc
 
         status, _ = conn.select(config.folder, readonly=True)
-        if status != "OK":
+        if status != IMAP_OK:
             raise MailError(f"Could not open the '{config.folder}' folder")
 
         status, data = conn.uid("search", None, f"UID {since_uid + 1}:*")
-        if status != "OK":
+        if status != IMAP_OK:
             raise MailError("Could not search the mailbox")
 
         # An empty result still matches IMAP's highest existing UID (its way
@@ -90,7 +94,7 @@ def fetch_new(config: MailConfig, since_uid: int) -> list[tuple[int, bytes]]:
         messages = []
         for uid in uids:
             status, msg_data = conn.uid("fetch", str(uid), "(RFC822)")
-            if status != "OK" or not msg_data or msg_data[0] is None:
+            if status != IMAP_OK or not msg_data or msg_data[0] is None:
                 continue
             messages.append((uid, msg_data[0][1]))
         return messages
@@ -132,9 +136,9 @@ def _extract_body_text(msg: Message) -> str:
         if part.is_multipart() or part.get_filename():
             continue
         content_type = part.get_content_type()
-        if content_type == "text/plain":
+        if content_type == PLAIN_TEXT:
             plain_parts.append(_decode_part(part))
-        elif content_type == "text/html":
+        elif content_type == HTML_TEXT:
             html_parts.append(_decode_part(part))
 
     if plain_parts:

@@ -19,6 +19,8 @@ LOG_FILE="${NETWORK_WATCHDOG_LOG_FILE:-/var/log/network-watchdog.log}"
 SYS_CLASS_NET="${NETWORK_WATCHDOG_SYS_CLASS_NET:-/sys/class/net}"
 RESTART_THRESHOLD=3   # ~9 minutes of failures at the default 3-minute timer
 REBOOT_THRESHOLD=6    # ~18 minutes of failures
+DMESG_TAIL_LINES=40   # kernel log kept in each escalation snapshot
+LINK_BOUNCE_PAUSE_SECONDS=2  # between turning networking off and on
 
 log() {
     printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE"
@@ -43,7 +45,7 @@ snapshot() {
         dump "iw-link-$(basename "$dev")" iw dev "$(basename "$dev")" link
     done
     dump "rfkill" rfkill list
-    dump "dmesg-tail" bash -c "dmesg | tail -n 40"
+    dump "dmesg-tail" bash -c "dmesg | tail -n $DMESG_TAIL_LINES"
     dump "network-manager-status" systemctl status NetworkManager --no-pager -l
 }
 
@@ -72,7 +74,7 @@ if (( FAILS == RESTART_THRESHOLD )); then
     snapshot
     if systemctl is-active --quiet NetworkManager; then
         log "restarting networking via nmcli"
-        nmcli networking off && sleep 2 && nmcli networking on
+        nmcli networking off && sleep "$LINK_BOUNCE_PAUSE_SECONDS" && nmcli networking on
     elif systemctl is-active --quiet dhcpcd; then
         log "restarting dhcpcd"
         systemctl restart dhcpcd
@@ -82,7 +84,7 @@ if (( FAILS == RESTART_THRESHOLD )); then
             [[ -e "$dev" ]] || continue
             iface="$(basename "$dev")"
             ip link set "$iface" down
-            sleep 2
+            sleep "$LINK_BOUNCE_PAUSE_SECONDS"
             ip link set "$iface" up
         done
     fi

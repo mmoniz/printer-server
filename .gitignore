@@ -15,3 +15,8 @@ mail.db
 .DS_Store
 
 *mail.env
+
+# Secrets
+.env
+.env.*
+!.env.example

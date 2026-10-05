@@ -1,4 +1,44 @@
+[project]
+name = "printer-server"
+version = "0.0.0"  # not published; the app is deployed from a checkout (scripts/install.sh)
+description = "A home print server for 4x6 shipping labels on a Raspberry Pi"
+requires-python = ">=3.11"  # Raspberry Pi OS Bookworm ships 3.11; see the pi-deployment skill
+# Keep in step with requirements.txt, which is what the Pi installs (it reuses
+# apt's numpy and Pillow). tests/test_dependencies.py enforces it.
+dependencies = [
+    "numpy>=1.24",
+    "Flask>=3.0",
+    "Pillow>=10.0",
+    "pypdf>=4.0",
+    "pypdfium2>=4.25",
+    "gunicorn>=21.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.16",
+]
+
+[tool.uv]
+package = false  # an app, not a library: nothing to build or install
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# ruff's defaults, plus magic values in comparisons (ENG-14). Tests are exempt:
+# their expected values are the spec.
+select = ["E4", "E7", "E9", "F", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+
+[tool.ruff.lint.pylint]
+# The default is ["str", "bytes"], which leaves magic strings unchecked.
+allow-magic-value-types = ["bytes"]
