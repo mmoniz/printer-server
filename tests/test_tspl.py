@@ -129,9 +129,18 @@ def test_cups_filter_end_to_end(tmp_path):
 
     env = {"PYTHONPATH": str(REPO_ROOT), "PATH": "/usr/bin:/bin"}
     proc = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "cups" / "rastertotspl"),
-         "1", "mike", "test-label", "1", "PageSize=w288h432"],
-        input=raster, capture_output=True, env=env,
+        [
+            sys.executable,
+            str(REPO_ROOT / "cups" / "rastertotspl"),
+            "1",
+            "mike",
+            "test-label",
+            "1",
+            "PageSize=w288h432",
+        ],
+        input=raster,
+        capture_output=True,
+        env=env,
     )
 
     assert proc.returncode == 0, proc.stderr.decode()
@@ -142,9 +151,18 @@ def test_cups_filter_end_to_end(tmp_path):
 def test_cups_filter_reports_bad_input():
     env = {"PYTHONPATH": str(REPO_ROOT), "PATH": "/usr/bin:/bin"}
     proc = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "cups" / "rastertotspl"),
-         "1", "mike", "bad", "1", ""],
-        input=b"not a raster", capture_output=True, env=env,
+        [
+            sys.executable,
+            str(REPO_ROOT / "cups" / "rastertotspl"),
+            "1",
+            "mike",
+            "bad",
+            "1",
+            "",
+        ],
+        input=b"not a raster",
+        capture_output=True,
+        env=env,
     )
 
     assert proc.returncode == 1

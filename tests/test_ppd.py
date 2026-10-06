@@ -38,7 +38,9 @@ def test_default_media_is_4x6(ppd):
 def test_4x6_is_288x432_points(ppd):
     assert '*PaperDimension 4x6.Fullbleed/4.00x6.00" (shipping label): "288 432"' in ppd
     # Fullbleed: the printable area is the whole label.
-    assert '*ImageableArea 4x6.Fullbleed/4.00x6.00" (shipping label): "0 0 288 432"' in ppd
+    assert (
+        '*ImageableArea 4x6.Fullbleed/4.00x6.00" (shipping label): "0 0 288 432"' in ppd
+    )
 
 
 def test_raster_matches_what_the_filter_expects(ppd):
@@ -55,8 +57,7 @@ def test_raster_matches_what_the_filter_expects(ppd):
 
 
 def test_filter_is_wired_up(ppd):
-    assert directive(ppd, "cupsFilter") == \
-        "application/vnd.cups-raster 0 rastertotspl"
+    assert directive(ppd, "cupsFilter") == "application/vnd.cups-raster 0 rastertotspl"
 
 
 def test_airprint_urf_is_declared(ppd):
@@ -90,21 +91,28 @@ def test_every_media_size_is_fully_described(ppd):
 def test_ppd_is_in_sync_with_its_generator(tmp_path):
     """Catch hand-edits to the generated file."""
     regenerated = tmp_path / "LabelPrinter.ppd"
-    subprocess.run([sys.executable, str(GENERATOR), str(regenerated)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [sys.executable, str(GENERATOR), str(regenerated)],
+        check=True,
+        capture_output=True,
+    )
 
-    assert regenerated.read_text() == PPD_PATH.read_text(), \
+    assert regenerated.read_text() == PPD_PATH.read_text(), (
         "cups/LabelPrinter.ppd is stale; run python3 scripts/make_ppd.py"
+    )
 
 
-@pytest.mark.skipif(shutil.which("cupstestppd") is None,
-                    reason="cupstestppd not installed")
+@pytest.mark.skipif(
+    shutil.which("cupstestppd") is None, reason="cupstestppd not installed"
+)
 def test_cupstestppd_is_happy_apart_from_the_uninstalled_filter():
-    proc = subprocess.run(["cupstestppd", str(PPD_PATH)],
-                          capture_output=True, text=True)
+    proc = subprocess.run(
+        ["cupstestppd", str(PPD_PATH)], capture_output=True, text=True
+    )
 
     problems = [
-        line.strip() for line in proc.stdout.splitlines()
+        line.strip()
+        for line in proc.stdout.splitlines()
         if "**FAIL**" in line
         # The filter only exists once install.sh has put it in place.
         and "rastertotspl" not in line

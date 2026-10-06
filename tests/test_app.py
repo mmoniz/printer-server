@@ -26,13 +26,26 @@ class FakeCups:
         self.status = "printer labels is idle."
         self.fail_with = None
 
-    def submit(self, pdf, queue="labels", title="label", copies=1,
-               darkness=None, media="4x6.Fullbleed"):
+    def submit(
+        self,
+        pdf,
+        queue="labels",
+        title="label",
+        copies=1,
+        darkness=None,
+        media="4x6.Fullbleed",
+    ):
         if self.fail_with:
             raise PrintError(self.fail_with)
         self.submitted.append(
-            {"pdf": pdf, "queue": queue, "title": title, "copies": copies,
-             "darkness": darkness, "media": media}
+            {
+                "pdf": pdf,
+                "queue": queue,
+                "title": title,
+                "copies": copies,
+                "darkness": darkness,
+                "media": media,
+            }
         )
         return f"{queue}-{len(self.submitted)}"
 
@@ -109,6 +122,7 @@ def token_from(response):
 
 # --- the happy path ------------------------------------------------------
 
+
 def test_index_renders(client):
     resp = client.get("/")
     assert resp.status_code == 200
@@ -126,8 +140,9 @@ def test_upload_then_print(client, cups, letter_with_label):
     assert png.status_code == 200
     assert png.data[:8] == b"\x89PNG\r\n\x1a\n"
 
-    printed = client.post(f"/print/{token}", data={"copies": "2", "darkness": "9"},
-                          follow_redirects=True)
+    printed = client.post(
+        f"/print/{token}", data={"copies": "2", "darkness": "9"}, follow_redirects=True
+    )
     assert printed.status_code == 200
     assert b"Sent to the printer" in printed.data
 
@@ -150,37 +165,54 @@ def test_printing_consumes_the_token(client, letter_with_label):
 def test_pasted_link_is_fetched_and_normalized(client, cups, urlfetch, label_4x6):
     urlfetch.result = (label_4x6, "label.pdf")
 
-    resp = client.post("/upload",
-                       data={"url": " https://example.com/label.pdf ", "mode": "auto"},
-                       content_type="multipart/form-data", follow_redirects=False)
+    resp = client.post(
+        "/upload",
+        data={"url": " https://example.com/label.pdf ", "mode": "auto"},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
     token = token_from(resp)
 
-    assert urlfetch.requested == [("https://example.com/label.pdf",
-                                   app_module.MAX_UPLOAD_BYTES)]
+    assert urlfetch.requested == [
+        ("https://example.com/label.pdf", app_module.MAX_UPLOAD_BYTES)
+    ]
     assert client.get(f"/review/{token}").status_code == 200
 
 
 def test_file_wins_over_url_when_both_are_present(client, cups, urlfetch, label_4x6):
     resp = client.post(
         "/upload",
-        data={"label": (io.BytesIO(label_4x6), "label.pdf"),
-             "url": "https://example.com/other.pdf", "mode": "auto"},
-        content_type="multipart/form-data", follow_redirects=False)
+        data={
+            "label": (io.BytesIO(label_4x6), "label.pdf"),
+            "url": "https://example.com/other.pdf",
+            "mode": "auto",
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
     token_from(resp)
     assert urlfetch.requested == []
 
 
 def test_unreachable_link_is_reported(client, urlfetch):
     urlfetch.fail_with = "Could not reach that link: timed out"
-    resp = client.post("/upload", data={"url": "https://example.com/label.pdf"},
-                       content_type="multipart/form-data", follow_redirects=True)
+    resp = client.post(
+        "/upload",
+        data={"url": "https://example.com/label.pdf"},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
     assert b"Could not reach that link" in resp.data
 
 
 def test_fetched_link_still_enforces_the_suffix_allowlist(client, urlfetch):
     urlfetch.result = (b"whatever", "label.exe")
-    resp = client.post("/upload", data={"url": "https://example.com/label.exe"},
-                       content_type="multipart/form-data", follow_redirects=True)
+    resp = client.post(
+        "/upload",
+        data={"url": "https://example.com/label.exe"},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
     assert b"not supported" in resp.data
 
 
@@ -198,22 +230,33 @@ def test_png_upload_is_accepted(client, cups):
 
 # --- input validation ----------------------------------------------------
 
+
 def test_missing_file_is_reported(client):
-    resp = client.post("/upload", data={"mode": "auto"},
-                       content_type="multipart/form-data", follow_redirects=True)
+    resp = client.post(
+        "/upload",
+        data={"mode": "auto"},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
     assert b"Choose a file, or paste a link" in resp.data
 
 
 def test_unsupported_type_is_reported(client):
     resp = upload(client, b"MZ\x90\x00", "virus.exe")
-    body = client.get(resp.headers["Location"]).data if resp.status_code == 302 else resp.data
+    body = (
+        client.get(resp.headers["Location"]).data
+        if resp.status_code == 302
+        else resp.data
+    )
     assert b"not supported" in body
 
 
 def test_blank_page_is_reported(client, blank_page):
     resp = upload(client, blank_page)
     assert resp.status_code == 302
-    assert client.get(resp.headers["Location"], follow_redirects=True).data.count(b"blank")
+    assert client.get(resp.headers["Location"], follow_redirects=True).data.count(
+        b"blank"
+    )
 
 
 def test_corrupt_pdf_is_reported(client):
@@ -242,6 +285,7 @@ def test_unknown_token_is_handled(client):
 
 # --- printer trouble -----------------------------------------------------
 
+
 def test_print_failure_is_shown_to_the_user(client, cups, label_4x6):
     token = token_from(upload(client, label_4x6))
     cups.fail_with = "the 'labels' print queue does not exist on this machine"
@@ -262,8 +306,9 @@ def test_offline_printer_disables_the_print_button(client, cups, label_4x6):
 
 
 def test_jobs_are_listed_and_cancellable(client, cups):
-    cups.jobs = [Job(id="labels-7", user="mike", size="12288",
-                     submitted="Sat 09 Aug 2026")]
+    cups.jobs = [
+        Job(id="labels-7", user="mike", size="12288", submitted="Sat 09 Aug 2026")
+    ]
 
     listing = client.get("/")
     assert b"labels-7" in listing.data
@@ -281,6 +326,7 @@ def test_healthz(client, cups):
 
 # --- admin / mail history -------------------------------------------------
 
+
 def test_admin_page_with_no_mail_configured(client):
     resp = client.get("/admin")
     assert resp.status_code == 200
@@ -290,12 +336,23 @@ def test_admin_page_with_no_mail_configured(client):
 
 def test_admin_lists_a_received_message_and_its_preview(client, mail_store, label_4x6):
     from labelserver import normalize
+
     pdf, result = normalize.normalize_upload(label_4x6, "label.pdf")
     preview = normalize.render_preview(pdf)
-    mail_store.add_message("amazon@example.com", "Your return label", "",
-                           [{"filename": "label.pdf", "pdf": pdf, "preview": preview,
-                             "summary": result.describe(),
-                             "label_shaped": result.label_shaped}])
+    mail_store.add_message(
+        "amazon@example.com",
+        "Your return label",
+        "",
+        [
+            {
+                "filename": "label.pdf",
+                "pdf": pdf,
+                "preview": preview,
+                "summary": result.describe(),
+                "label_shaped": result.label_shaped,
+            }
+        ],
+    )
 
     listing = client.get("/admin")
     assert b"Your return label" in listing.data
@@ -309,21 +366,37 @@ def test_admin_lists_a_received_message_and_its_preview(client, mail_store, labe
 
 
 def test_admin_shows_a_note_when_no_attachment_was_found(client, mail_store):
-    mail_store.add_message("someone@example.com", "just a link",
-                           "No PDF or image attachment found in this email.", [])
+    mail_store.add_message(
+        "someone@example.com",
+        "just a link",
+        "No PDF or image attachment found in this email.",
+        [],
+    )
     resp = client.get("/admin")
     assert b"No PDF or image attachment" in resp.data
 
 
 def test_admin_use_sends_a_mail_attachment_through_the_normal_review_flow(
-        client, cups, mail_store, label_4x6):
+    client, cups, mail_store, label_4x6
+):
     from labelserver import normalize
+
     pdf, result = normalize.normalize_upload(label_4x6, "label.pdf")
     preview = normalize.render_preview(pdf)
-    mail_store.add_message("amazon@example.com", "label", "",
-                           [{"filename": "label.pdf", "pdf": pdf, "preview": preview,
-                             "summary": result.describe(),
-                             "label_shaped": result.label_shaped}])
+    mail_store.add_message(
+        "amazon@example.com",
+        "label",
+        "",
+        [
+            {
+                "filename": "label.pdf",
+                "pdf": pdf,
+                "preview": preview,
+                "summary": result.describe(),
+                "label_shaped": result.label_shaped,
+            }
+        ],
+    )
     attachment_id = mail_store.list_messages()[0].attachments[0].id
 
     resp = client.post(f"/admin/use/{attachment_id}", follow_redirects=False)
@@ -362,6 +435,7 @@ def test_admin_delete_all_clears_history(client, mail_store):
 
 # --- pending store -------------------------------------------------------
 
+
 def test_pending_store_expires_old_entries():
     store = app_module.PendingStore(ttl=0.0)
     token = store.add(app_module.Pending(b"pdf", b"png", "a.pdf", "summary"))
@@ -370,8 +444,7 @@ def test_pending_store_expires_old_entries():
 
 def test_pending_store_evicts_beyond_limit():
     store = app_module.PendingStore(limit=2)
-    tokens = [store.add(app_module.Pending(b"", b"", f"{i}.pdf", ""))
-              for i in range(4)]
+    tokens = [store.add(app_module.Pending(b"", b"", f"{i}.pdf", "")) for i in range(4)]
 
     alive = [t for t in tokens if store.get(t) is not None]
     assert len(alive) == 2
@@ -379,6 +452,7 @@ def test_pending_store_evicts_beyond_limit():
 
 
 # --- printing helpers ----------------------------------------------------
+
 
 def test_job_number_is_extracted():
     assert Job("labels-42", "mike", "1", "now").number == "42"
@@ -396,9 +470,11 @@ def test_submit_rejects_empty_pdf():
 
 def test_explain_translates_cups_errors():
     assert "run scripts/install.sh" in printing._explain(
-        "lp: Error - unknown destination `labels'", "labels")
+        "lp: Error - unknown destination `labels'", "labels"
+    )
     assert "rejecting jobs" in printing._explain(
-        "lp: Destination labels is not accepting jobs.", "labels")
+        "lp: Destination labels is not accepting jobs.", "labels"
+    )
     assert printing._explain("", "labels")  # never returns empty
 
 

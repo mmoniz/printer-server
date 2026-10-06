@@ -55,17 +55,33 @@ def _run(args: list[str], stdin: bytes | None = None) -> subprocess.CompletedPro
         raise PrintError(f"{args[0]} timed out after {TIMEOUT}s") from exc
 
 
-def submit(pdf: bytes, queue: str = DEFAULT_QUEUE, title: str = "label",
-           copies: int = 1, darkness: int | None = None,
-           media: str = "4x6.Fullbleed") -> str:
+def submit(
+    pdf: bytes,
+    queue: str = DEFAULT_QUEUE,
+    title: str = "label",
+    copies: int = 1,
+    darkness: int | None = None,
+    media: str = "4x6.Fullbleed",
+) -> str:
     """Send a PDF to the queue. Returns the CUPS job id."""
     if not pdf:
         raise PrintError("nothing to print")
     if copies < 1:
         raise PrintError("copies must be at least 1")
 
-    args = ["lp", "-d", queue, "-t", title, "-n", str(copies),
-            "-o", f"media={media}", "-o", "fit-to-page=false"]
+    args = [
+        "lp",
+        "-d",
+        queue,
+        "-t",
+        title,
+        "-n",
+        str(copies),
+        "-o",
+        f"media={media}",
+        "-o",
+        "fit-to-page=false",
+    ]
     if darkness is not None:
         args += ["-o", f"Darkness={darkness}"]
     args += ["--"]  # read from stdin
@@ -105,8 +121,9 @@ def jobs(queue: str = DEFAULT_QUEUE) -> list[Job]:
         # e.g. "labels-7   mike   12288   Sat 09 Aug 2026 08:15:02 PM EDT"
         parts = line.split(None, LPSTAT_JOB_FIELDS - 1)
         if len(parts) == LPSTAT_JOB_FIELDS and parts[0].startswith(queue):
-            out.append(Job(id=parts[0], user=parts[1], size=parts[2],
-                           submitted=parts[3]))
+            out.append(
+                Job(id=parts[0], user=parts[1], size=parts[2], submitted=parts[3])
+            )
     return out
 
 
@@ -117,8 +134,9 @@ def cancel(job_id: str, queue: str = DEFAULT_QUEUE) -> None:
 
     proc = _run(["cancel", job_id])
     if proc.returncode != 0:
-        raise PrintError(proc.stderr.decode(errors="replace").strip()
-                         or f"could not cancel {job_id}")
+        raise PrintError(
+            proc.stderr.decode(errors="replace").strip() or f"could not cancel {job_id}"
+        )
 
 
 def queue_state(queue: str = DEFAULT_QUEUE) -> tuple[bool, str]:
@@ -141,5 +159,6 @@ def printers() -> list[str]:
     proc = _run(["lpstat", "-a"])
     if proc.returncode != 0:
         return []
-    return [line.split()[0] for line in proc.stdout.decode().splitlines()
-            if line.strip()]
+    return [
+        line.split()[0] for line in proc.stdout.decode().splitlines() if line.strip()
+    ]

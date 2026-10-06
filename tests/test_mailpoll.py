@@ -16,12 +16,19 @@ from email.message import EmailMessage
 import pytest
 
 from labelserver import mailpoll
-from labelserver.mail import Attachment, MailConfig, MailError, ParsedMessage, parse_message
+from labelserver.mail import (
+    Attachment,
+    MailConfig,
+    MailError,
+    ParsedMessage,
+    parse_message,
+)
 from labelserver.mailstore import MailStore
 from labelserver.printing import PrintError
 
-CONFIG = MailConfig(host="imap.example.com", username="labels@example.com",
-                    password="app-password")
+CONFIG = MailConfig(
+    host="imap.example.com", username="labels@example.com", password="app-password"
+)
 
 
 @pytest.fixture
@@ -60,9 +67,13 @@ def test_no_new_mail_does_nothing(store, fake_mail):
 def test_a_printable_attachment_is_normalized_and_stored(store, fake_mail, label_4x6):
     raw = b"raw-1"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="amazon@example.com", subject="Your label",
-        attachments=[Attachment(filename="label.pdf", data=label_4x6)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="amazon@example.com",
+            subject="Your label",
+            attachments=[Attachment(filename="label.pdf", data=label_4x6)],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store)
 
@@ -89,8 +100,9 @@ def test_watermark_only_advances_to_the_highest_uid_seen(store, fake_mail, label
 def test_email_with_no_attachment_is_recorded_with_a_note(store, fake_mail):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(sender="x", subject="Print my label please",
-                                           attachments=[])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(sender="x", subject="Print my label please", attachments=[])
+    }
 
     mailpoll.poll_once(CONFIG, store)
 
@@ -101,15 +113,21 @@ def test_email_with_no_attachment_is_recorded_with_a_note(store, fake_mail):
 
 # --- relevance filter -----------------------------------------------------
 
+
 def test_irrelevant_email_is_not_stored(store, fake_mail):
     """A dedicated mailbox still gets the odd security alert -- nothing
     about label printing, no attachment. Don't clutter the admin panel
     with it, but still advance past it so it isn't re-checked forever."""
     raw = b"raw"
     fake_mail.messages = [(5, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="no-reply@example.com", subject="New sign-in to your account",
-        body_text="We noticed a new sign-in from a Mac.", attachments=[])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="no-reply@example.com",
+            subject="New sign-in to your account",
+            body_text="We noticed a new sign-in from a Mac.",
+            attachments=[],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store)
 
@@ -118,11 +136,19 @@ def test_irrelevant_email_is_not_stored(store, fake_mail):
     assert store.get_watermark(mailpoll.WATERMARK_KEY) == 5
 
 
-def test_keyword_in_subject_alone_makes_an_attachmentless_email_relevant(store, fake_mail):
+def test_keyword_in_subject_alone_makes_an_attachmentless_email_relevant(
+    store, fake_mail
+):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(sender="x", subject="please print this",
-                                           body_text="no link here", attachments=[])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="please print this",
+            body_text="no link here",
+            attachments=[],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store)
 
@@ -133,9 +159,14 @@ def test_keyword_in_subject_alone_makes_an_attachmentless_email_relevant(store, 
 def test_keyword_in_body_alone_makes_an_attachmentless_email_relevant(store, fake_mail):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="fyi",
-        body_text="here's the label: https://example.com/x", attachments=[])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="fyi",
+            body_text="here's the label: https://example.com/x",
+            attachments=[],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store)
 
@@ -145,9 +176,14 @@ def test_keyword_in_body_alone_makes_an_attachmentless_email_relevant(store, fak
 def test_an_attachment_is_relevant_regardless_of_wording(store, fake_mail, label_4x6):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="hey", body_text="see attached",
-        attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="hey",
+            body_text="see attached",
+            attachments=[Attachment(filename="a.pdf", data=label_4x6)],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store)
 
@@ -172,7 +208,8 @@ def test_a_real_account_notification_email_is_not_relevant():
         "<p>Get started with Google on your new device.</p>"
         "<script>document.body.onload = function() { window.print(); };</script>"
         "</body></html>",
-        subtype="html")
+        subtype="html",
+    )
 
     parsed = parse_message(bytes(msg))
 
@@ -182,9 +219,13 @@ def test_a_real_account_notification_email_is_not_relevant():
 def test_unreadable_attachment_is_recorded_with_a_note_not_dropped(store, fake_mail):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="bad file",
-        attachments=[Attachment(filename="broken.pdf", data=b"not a real pdf")])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="bad file",
+            attachments=[Attachment(filename="broken.pdf", data=b"not a real pdf")],
+        )
+    }
 
     mailpoll.poll_once(CONFIG, store)
 
@@ -197,11 +238,16 @@ def test_unreadable_attachment_is_recorded_with_a_note_not_dropped(store, fake_m
 def test_a_mixed_batch_notes_only_the_failures(store, fake_mail, label_4x6):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="two attachments", attachments=[
-            Attachment(filename="good.pdf", data=label_4x6),
-            Attachment(filename="bad.pdf", data=b"not a real pdf"),
-        ])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="two attachments",
+            attachments=[
+                Attachment(filename="good.pdf", data=label_4x6),
+                Attachment(filename="bad.pdf", data=b"not a real pdf"),
+            ],
+        )
+    }
 
     mailpoll.poll_once(CONFIG, store)
 
@@ -221,7 +267,8 @@ def test_mail_error_propagates_so_the_caller_can_log_and_retry(store, fake_mail)
 def test_poll_forever_stops_when_the_event_is_set(store, fake_mail):
     stop = threading.Event()
     thread = threading.Thread(
-        target=mailpoll.poll_forever, args=(CONFIG, store, 0.01, stop))
+        target=mailpoll.poll_forever, args=(CONFIG, store, 0.01, stop)
+    )
     thread.start()
     time.sleep(0.05)
     stop.set()
@@ -231,13 +278,21 @@ def test_poll_forever_stops_when_the_event_is_set(store, fake_mail):
 
 # --- auto-print -----------------------------------------------------------
 
+
 class FakeCups:
     def __init__(self):
         self.submitted = []
         self.fail_with = None
 
-    def submit(self, pdf, queue="labels", title="label", copies=1,
-              darkness=None, media="4x6.Fullbleed"):
+    def submit(
+        self,
+        pdf,
+        queue="labels",
+        title="label",
+        copies=1,
+        darkness=None,
+        media="4x6.Fullbleed",
+    ):
         if self.fail_with:
             raise PrintError(self.fail_with)
         self.submitted.append({"pdf": pdf, "queue": queue, "title": title})
@@ -251,11 +306,18 @@ def cups(monkeypatch):
     return fake
 
 
-def test_auto_print_off_by_default_leaves_it_in_the_queue(store, fake_mail, cups, label_4x6):
+def test_auto_print_off_by_default_leaves_it_in_the_queue(
+    store, fake_mail, cups, label_4x6
+):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="label",
+            attachments=[Attachment(filename="a.pdf", data=label_4x6)],
+        )
+    }
 
     mailpoll.poll_once(CONFIG, store)
 
@@ -266,8 +328,13 @@ def test_auto_print_off_by_default_leaves_it_in_the_queue(store, fake_mail, cups
 def test_auto_print_sends_a_confidently_shaped_label(store, fake_mail, cups, label_4x6):
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="label",
+            attachments=[Attachment(filename="a.pdf", data=label_4x6)],
+        )
+    }
 
     mailpoll.poll_once(CONFIG, store, auto_print=True, queue="labels")
 
@@ -277,13 +344,20 @@ def test_auto_print_sends_a_confidently_shaped_label(store, fake_mail, cups, lab
 
 
 def test_auto_print_skips_an_attachment_that_is_not_confidently_a_label(
-        store, fake_mail, cups):
+    store, fake_mail, cups
+):
     from conftest import make_pdf
+
     square = make_pdf(300, 300, [(8, 8, 284, 284)])
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=square)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="label",
+            attachments=[Attachment(filename="a.pdf", data=square)],
+        )
+    }
 
     mailpoll.poll_once(CONFIG, store, auto_print=True)
 
@@ -295,8 +369,13 @@ def test_auto_print_failure_is_noted_not_raised(store, fake_mail, cups, label_4x
     cups.fail_with = "the 'labels' queue is rejecting jobs"
     raw = b"raw"
     fake_mail.messages = [(1, raw)]
-    fake_mail.parsed = {raw: ParsedMessage(
-        sender="x", subject="label", attachments=[Attachment(filename="a.pdf", data=label_4x6)])}
+    fake_mail.parsed = {
+        raw: ParsedMessage(
+            sender="x",
+            subject="label",
+            attachments=[Attachment(filename="a.pdf", data=label_4x6)],
+        )
+    }
 
     count = mailpoll.poll_once(CONFIG, store, auto_print=True)
 
@@ -313,7 +392,8 @@ def test_poll_forever_survives_a_mail_error(store, fake_mail):
     fake_mail.fail_with = "temporarily unreachable"
     stop = threading.Event()
     thread = threading.Thread(
-        target=mailpoll.poll_forever, args=(CONFIG, store, 0.01, stop))
+        target=mailpoll.poll_forever, args=(CONFIG, store, 0.01, stop)
+    )
     thread.start()
     time.sleep(0.05)
     stop.set()

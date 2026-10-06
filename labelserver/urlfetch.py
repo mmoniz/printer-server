@@ -59,11 +59,18 @@ def _check_destination(hostname: str) -> None:
 
     for *_, sockaddr in infos:
         ip = ipaddress.ip_address(sockaddr[0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
             raise FetchError(
                 "That link points at a private or internal address, "
-                "which isn't allowed.")
+                "which isn't allowed."
+            )
 
 
 def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
@@ -79,8 +86,7 @@ def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
 
         _check_destination(parsed.hostname)
 
-        request = urllib.request.Request(
-            current, headers={"User-Agent": USER_AGENT})
+        request = urllib.request.Request(current, headers={"User-Agent": USER_AGENT})
         try:
             response = _opener.open(request, timeout=CONNECT_TIMEOUT)
         except urllib.error.HTTPError as exc:
@@ -93,7 +99,9 @@ def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
             if exc.code in (301, 302, 303, 307, 308):
                 location = exc.headers.get("Location")
                 if not location:
-                    raise FetchError("That link redirected with nowhere to go.") from exc
+                    raise FetchError(
+                        "That link redirected with nowhere to go."
+                    ) from exc
                 current = urljoin(current, location)
                 continue
             raise FetchError(f"The link returned an error ({exc.code}).") from exc
@@ -118,16 +126,19 @@ def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
                         "That link returned a web page instead of a file, "
                         "which usually means it needs you to be signed in. "
                         "Open it in your own browser instead, then drag or "
-                        "paste the label image itself onto this page.")
+                        "paste the label image itself onto this page."
+                    )
                 raise FetchError(
                     f"That link isn't a PDF or image "
-                    f"({content_type or 'unknown type'}).")
+                    f"({content_type or 'unknown type'})."
+                )
 
             data = response.read(max_bytes + 1)
 
         if len(data) > max_bytes:
             raise FetchError(
-                f"That file is too big (limit {max_bytes // (1024 * 1024)} MB).")
+                f"That file is too big (limit {max_bytes // (1024 * 1024)} MB)."
+            )
 
         filename = os.path.basename(parsed.path) or "label"
         if not filename.lower().endswith(suffix):

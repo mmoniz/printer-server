@@ -170,14 +170,19 @@ def test_restarts_via_nmcli_when_networkmanager_is_active(env):
     assert "nmcli networking off" in calls(env)
     assert "nmcli networking on" in calls(env)
     # the diagnostic snapshot actually landed in the log, not just a mention of it
-    for label in ("[ip-addr]", "[ip-route]", "[rfkill]", "[dmesg-tail]",
-                  "[network-manager-status]"):
+    for label in (
+        "[ip-addr]",
+        "[ip-route]",
+        "[rfkill]",
+        "[dmesg-tail]",
+        "[network-manager-status]",
+    ):
         assert label in log
 
 
 def test_restarts_dhcpcd_when_networkmanager_is_not_active(env):
     env["FAKE_PING_EXIT"] = "1"
-    env["FAKE_NM_ACTIVE"] = "1"      # inactive
+    env["FAKE_NM_ACTIVE"] = "1"  # inactive
     env["FAKE_DHCPCD_ACTIVE"] = "0"  # active
     for _ in range(3):
         run(env)
@@ -219,7 +224,10 @@ def test_reboots_after_the_reboot_threshold(env):
         run(env)
 
     log = log_text(env)
-    assert "ESCALATION: network still down after a restart attempt; rebooting (failures=6)" in log
+    assert (
+        "ESCALATION: network still down after a restart attempt; rebooting (failures=6)"
+        in log
+    )
     assert "systemctl reboot" in calls(env)
     assert "sync" in calls(env)
     # state is cleared before reboot, so a boot that never actually happens

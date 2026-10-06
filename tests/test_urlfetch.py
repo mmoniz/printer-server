@@ -25,7 +25,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         status, content_type, body, extra_headers = self.routes.get(
-            self.path, (404, "text/plain", b"not found", {}))
+            self.path, (404, "text/plain", b"not found", {})
+        )
         self.send_response(status)
         if content_type:
             self.send_header("Content-Type", content_type)
@@ -116,12 +117,15 @@ def test_http_error_is_reported(server):
         fetch_url(f"{base_url(server)}/missing.pdf", max_bytes=1_000_000)
 
 
-@pytest.mark.parametrize("url", [
-    "http://127.0.0.1/label.pdf",
-    "http://localhost/label.pdf",
-    "http://169.254.169.254/latest/meta-data/",  # cloud metadata endpoint
-    "http://[::1]/label.pdf",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/label.pdf",
+        "http://localhost/label.pdf",
+        "http://169.254.169.254/latest/meta-data/",  # cloud metadata endpoint
+        "http://[::1]/label.pdf",
+    ],
+)
 def test_private_and_loopback_destinations_are_rejected(url):
     with pytest.raises(FetchError, match="private or internal"):
         fetch_url(url, max_bytes=1_000_000)
@@ -153,11 +157,14 @@ def test_a_redirect_target_is_revalidated_independently(monkeypatch, server):
     assert checked == ["127.0.0.1", "internal.example"]
 
 
-@pytest.mark.parametrize("url", [
-    "ftp://example.com/label.pdf",
-    "file:///etc/passwd",
-    "not a url",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/label.pdf",
+        "file:///etc/passwd",
+        "not a url",
+    ],
+)
 def test_disallowed_schemes_are_rejected(url):
     with pytest.raises(FetchError):
         fetch_url(url, max_bytes=1_000_000)
