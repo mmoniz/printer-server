@@ -125,8 +125,12 @@ jobs:
       - name: Install from the lockfile
         # uv reads the Python version from .python-version (3.11, what the Pi runs).
         run: uv sync --locked
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
       - name: Lint (ruff, including magic values)
         run: uv run ruff check .
+      - name: Typecheck (mypy)
+        run: uv run mypy
       - name: Install CUPS tooling
         # cupstestppd validates the PPD; the rest of the suite stubs CUPS out.
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cups-ppdc
@@ -143,5 +147,5 @@ jobs:
         run: |
           {
             echo "### Build: ${{ job.status }}"
-            echo "Reproduce locally: \`uv sync --locked && uv run ruff check . && uv run pytest\`"
+            echo "Reproduce locally: \`uv sync --locked && uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest\`"
           } >> "$GITHUB_STEP_SUMMARY"

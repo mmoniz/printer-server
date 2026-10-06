@@ -41,9 +41,13 @@ def _looks_relevant(parsed: ParsedMessage) -> bool:
     return any(keyword in haystack for keyword in RELEVANT_KEYWORDS)
 
 
-def poll_once(config: MailConfig, store: MailStore, *,
-             auto_print: bool = False,
-             queue: str = printing.DEFAULT_QUEUE) -> int:
+def poll_once(
+    config: MailConfig,
+    store: MailStore,
+    *,
+    auto_print: bool = False,
+    queue: str = printing.DEFAULT_QUEUE,
+) -> int:
     """Fetch whatever is new, normalize it, and store it. Returns how many
     messages were stored -- an irrelevant message (see _looks_relevant)
     still advances the watermark so it isn't re-evaluated every poll, but
@@ -77,15 +81,23 @@ def poll_once(config: MailConfig, store: MailStore, *,
         for att in parsed.attachments:
             try:
                 pdf, result = normalize.normalize_upload(
-                    att.data, att.filename, mode=Mode.AUTO)
-                preview = normalize.render_preview(pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX)
+                    att.data, att.filename, mode=Mode.AUTO
+                )
+                preview = normalize.render_preview(
+                    pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX
+                )
             except NormalizeError as exc:
                 problems.append(f"{att.filename}: {exc}")
                 continue
-            attachments.append({
-                "filename": att.filename, "pdf": pdf, "preview": preview,
-                "summary": result.describe(), "label_shaped": result.label_shaped,
-            })
+            attachments.append(
+                {
+                    "filename": att.filename,
+                    "pdf": pdf,
+                    "preview": preview,
+                    "summary": result.describe(),
+                    "label_shaped": result.label_shaped,
+                }
+            )
 
             if auto_print and result.label_shaped:
                 try:
@@ -115,10 +127,15 @@ def poll_once(config: MailConfig, store: MailStore, *,
     return stored
 
 
-def poll_forever(config: MailConfig, store: MailStore, interval: float,
-                 stop: threading.Event, *,
-                 auto_print: bool = False,
-                 queue: str = printing.DEFAULT_QUEUE) -> None:
+def poll_forever(
+    config: MailConfig,
+    store: MailStore,
+    interval: float,
+    stop: threading.Event,
+    *,
+    auto_print: bool = False,
+    queue: str = printing.DEFAULT_QUEUE,
+) -> None:
     """Runs until `stop` is set. Errors are logged, not fatal -- a mailbox
     that's unreachable this minute may well be fine next minute, and a
     background thread that silently dies is worse than one that keeps

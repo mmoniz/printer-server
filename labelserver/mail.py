@@ -81,7 +81,7 @@ def fetch_new(config: MailConfig, since_uid: int) -> list[tuple[int, bytes]]:
         if status != IMAP_OK:
             raise MailError(f"Could not open the '{config.folder}' folder")
 
-        status, data = conn.uid("search", None, f"UID {since_uid + 1}:*")
+        status, data = conn.uid("search", None, f"UID {since_uid + 1}:*")  # type: ignore[arg-type]  # None means no CHARSET; typeshed wants str
         if status != IMAP_OK:
             raise MailError("Could not search the mailbox")
 
@@ -107,7 +107,7 @@ def fetch_new(config: MailConfig, since_uid: int) -> list[tuple[int, bytes]]:
 
 def _decode_part(part: Message) -> str:
     payload = part.get_payload(decode=True)
-    if not payload:
+    if not isinstance(payload, bytes) or not payload:
         return ""
     charset = part.get_content_charset() or "utf-8"
     try:
@@ -116,8 +116,9 @@ def _decode_part(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
-_SCRIPT_OR_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>",
-                              re.DOTALL | re.IGNORECASE)
+_SCRIPT_OR_STYLE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE
+)
 
 
 def _extract_body_text(msg: Message) -> str:
@@ -165,7 +166,7 @@ def parse_message(raw: bytes) -> ParsedMessage:
         if suffix not in ALLOWED_SUFFIXES:
             continue
         payload = part.get_payload(decode=True)
-        if payload:
+        if isinstance(payload, bytes) and payload:
             attachments.append(Attachment(filename=filename, data=payload))
 
     return ParsedMessage(

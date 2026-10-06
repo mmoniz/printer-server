@@ -18,10 +18,20 @@ def store():
     return MailStore(":memory:")
 
 
-def attachment(filename="label.pdf", pdf=b"pdf-bytes", preview=b"png-bytes",
-              summary="cropped to 4x6in", label_shaped=True):
-    return {"filename": filename, "pdf": pdf, "preview": preview,
-           "summary": summary, "label_shaped": label_shaped}
+def attachment(
+    filename="label.pdf",
+    pdf=b"pdf-bytes",
+    preview=b"png-bytes",
+    summary="cropped to 4x6in",
+    label_shaped=True,
+):
+    return {
+        "filename": filename,
+        "pdf": pdf,
+        "preview": preview,
+        "summary": summary,
+        "label_shaped": label_shaped,
+    }
 
 
 def test_empty_store_has_no_messages(store):
@@ -30,8 +40,12 @@ def test_empty_store_has_no_messages(store):
 
 
 def test_add_and_list_a_message_with_attachments(store):
-    store.add_message("amazon@example.com", "Your label", "",
-                      [attachment(filename="a.pdf"), attachment(filename="b.png")])
+    store.add_message(
+        "amazon@example.com",
+        "Your label",
+        "",
+        [attachment(filename="a.pdf"), attachment(filename="b.png")],
+    )
 
     messages = store.list_messages()
     assert len(messages) == 1
@@ -43,8 +57,12 @@ def test_add_and_list_a_message_with_attachments(store):
 
 
 def test_messages_without_attachments_are_still_recorded(store):
-    store.add_message("someone@example.com", "just a link",
-                      "No PDF or image attachment found in this email.", [])
+    store.add_message(
+        "someone@example.com",
+        "just a link",
+        "No PDF or image attachment found in this email.",
+        [],
+    )
 
     messages = store.list_messages()
     assert len(messages) == 1
@@ -66,8 +84,9 @@ def test_newest_message_listed_first(store):
 
 
 def test_get_attachment_returns_full_bytes(store):
-    store.add_message("a@example.com", "s", "", [attachment(pdf=b"the-pdf",
-                                                             preview=b"the-preview")])
+    store.add_message(
+        "a@example.com", "s", "", [attachment(pdf=b"the-pdf", preview=b"the-preview")]
+    )
     attachment_id = store.list_messages()[0].attachments[0].id
 
     record = store.get_attachment(attachment_id)
@@ -100,8 +119,9 @@ def test_delete_all_clears_everything(store):
 
 
 def test_total_bytes_sums_pdf_and_preview_sizes(store):
-    store.add_message("a@example.com", "s", "",
-                      [attachment(pdf=b"1234567890", preview=b"12345")])
+    store.add_message(
+        "a@example.com", "s", "", [attachment(pdf=b"1234567890", preview=b"12345")]
+    )
     assert store.total_bytes() == 15
 
 

@@ -36,7 +36,9 @@ DETECT_DPI = 72
 POINTS_PER_INCH = 72  # PDF user space
 PRINT_DPI = 203.0  # the printer's native resolution
 REVIEW_PREVIEW_WIDTH_PX = 420  # the preview shown on the review page
-LABEL_SHAPED_WEIGHT = 3.0  # how much a label-shaped block outweighs others of the same area
+LABEL_SHAPED_WEIGHT = (
+    3.0  # how much a label-shaped block outweighs others of the same area
+)
 QUARTER_TURN = 90
 
 # Pixels at or below this gray level count as ink (0 = black, 255 = white).
@@ -98,9 +100,11 @@ class Result:
     def describe(self) -> str:
         w, h = self.source_size_pt
         bits = [f"source {w / POINTS_PER_INCH:.2f}x{h / POINTS_PER_INCH:.2f}in"]
-        if self.cropped:
+        if self.crop_box_pt is not None:
             x0, y0, x1, y1 = self.crop_box_pt
-            bits.append(f"cropped to {(x1 - x0) / POINTS_PER_INCH:.2f}x{(y1 - y0) / POINTS_PER_INCH:.2f}in")
+            bits.append(
+                f"cropped to {(x1 - x0) / POINTS_PER_INCH:.2f}x{(y1 - y0) / POINTS_PER_INCH:.2f}in"
+            )
         if self.rotated_deg:
             bits.append(f"rotated {self.rotated_deg}°")
         bits.append(f"scaled {self.scale * 100:.0f}%")
@@ -161,7 +165,9 @@ def _runs(present: np.ndarray, min_gap: int) -> list[tuple[int, int]]:
     return runs
 
 
-def find_content_blocks(ink: np.ndarray, min_gap: int) -> list[tuple[int, int, int, int]]:
+def find_content_blocks(
+    ink: np.ndarray, min_gap: int
+) -> list[tuple[int, int, int, int]]:
     """Split a page into blocks of content separated by whitespace.
 
     A projection cut: first into horizontal bands, then each band into columns.
@@ -171,19 +177,23 @@ def find_content_blocks(ink: np.ndarray, min_gap: int) -> list[tuple[int, int, i
     Returns (x0, y0, x1, y1) boxes in pixel coordinates, origin top-left.
     """
     blocks = []
-    for top, bottom in _runs(ink.any(axis=1), min_gap):
+    for top, bottom in _runs(np.asarray(ink.any(axis=1)), min_gap):
         band = ink[top:bottom]
-        for left, right in _runs(band.any(axis=0), min_gap):
+        for left, right in _runs(np.asarray(band.any(axis=0)), min_gap):
             cell = band[:, left:right]
             # Tighten to the actual ink inside this cell.
             rows = np.flatnonzero(cell.any(axis=1))
             cols = np.flatnonzero(cell.any(axis=0))
             if rows.size == 0 or cols.size == 0:
                 continue
-            blocks.append((
-                left + int(cols[0]), top + int(rows[0]),
-                left + int(cols[-1]) + 1, top + int(rows[-1]) + 1,
-            ))
+            blocks.append(
+                (
+                    left + int(cols[0]),
+                    top + int(rows[0]),
+                    left + int(cols[-1]) + 1,
+                    top + int(rows[-1]) + 1,
+                )
+            )
     return blocks
 
 
@@ -204,8 +214,7 @@ def _score_block(box, page_area: float) -> float:
     return area * (LABEL_SHAPED_WEIGHT if _is_label_shaped(w, h) else 1.0)
 
 
-def find_label_region(gray: np.ndarray, min_gap: int,
-                      threshold: int = INK_THRESHOLD):
+def find_label_region(gray: np.ndarray, min_gap: int, threshold: int = INK_THRESHOLD):
     """Locate the label on a page, in pixel coordinates.
 
     Falls back to the overall ink bounding box when no block stands out.
@@ -236,8 +245,9 @@ def _is_label_shaped(width: float, height: float) -> bool:
     )
 
 
-def _detect_crop(pdf_bytes: bytes, page_index: int, page_w: float, page_h: float,
-                 mode: Mode):
+def _detect_crop(
+    pdf_bytes: bytes, page_index: int, page_w: float, page_h: float, mode: Mode
+):
     """Work out the region of the page to keep, in PDF points."""
     if mode is Mode.FIT:
         return None, False
@@ -277,8 +287,12 @@ def _detect_crop(pdf_bytes: bytes, page_index: int, page_w: float, page_h: float
     return pdf_box, label_shaped
 
 
-def normalize_pdf(data: bytes, mode: Mode = Mode.AUTO, page_index: int = 0,
-                  target: tuple[float, float] = LABEL_4X6) -> tuple[bytes, Result]:
+def normalize_pdf(
+    data: bytes,
+    mode: Mode = Mode.AUTO,
+    page_index: int = 0,
+    target: tuple[float, float] = LABEL_4X6,
+) -> tuple[bytes, Result]:
     """Place a page from ``data`` onto a label-sized page.
 
     Returns the new single-page PDF and a description of what was done.
@@ -341,7 +355,11 @@ def normalize_pdf(data: bytes, mode: Mode = Mode.AUTO, page_index: int = 0,
     target_w, target_h = target
 
     # Rotate a landscape label upright so it fills the portrait stock.
-    rotate = QUARTER_TURN if trust_rotation and (src_w > src_h) != (target_w > target_h) else 0
+    rotate = (
+        QUARTER_TURN
+        if trust_rotation and (src_w > src_h) != (target_w > target_h)
+        else 0
+    )
     effective_w, effective_h = (src_h, src_w) if rotate else (src_w, src_h)
 
     scale = min(target_w / effective_w, target_h / effective_h)
@@ -382,7 +400,7 @@ def image_to_pdf(data: bytes) -> bytes:
         raise NormalizeError("Pillow is required to accept images") from exc
 
     try:
-        img = Image.open(io.BytesIO(data))
+        img: Image.Image = Image.open(io.BytesIO(data))
         img.load()
     except Exception as exc:
         raise NormalizeError(f"could not read the image: {exc}") from exc
@@ -397,8 +415,9 @@ def image_to_pdf(data: bytes) -> bytes:
     return out.getvalue()
 
 
-def normalize_upload(data: bytes, filename: str = "", mode: Mode = Mode.AUTO,
-                     page_index: int = 0) -> tuple[bytes, Result]:
+def normalize_upload(
+    data: bytes, filename: str = "", mode: Mode = Mode.AUTO, page_index: int = 0
+) -> tuple[bytes, Result]:
     """Normalize an uploaded PDF or image into a 4x6 label PDF."""
     if not data:
         raise NormalizeError("the uploaded file is empty")

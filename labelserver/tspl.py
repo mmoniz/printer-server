@@ -84,7 +84,9 @@ class Settings:
             speed=as_int("zeprintrate", cls.speed),
             gap_mm=as_int("gap", gap),
             offset_mm=as_int("feedoffset", cls.offset_mm),
-            adjust_x=as_int("adjusthoriaontal", as_int("adjusthorizontal", cls.adjust_x)),
+            adjust_x=as_int(
+                "adjusthoriaontal", as_int("adjusthorizontal", cls.adjust_x)
+            ),
             adjust_y=as_int("adjustvertical", cls.adjust_y),
             copies=max(1, copies),
         )
@@ -192,8 +194,9 @@ def page_to_tspl(page: Page, settings: Settings = Settings()) -> bytes:
     return bytes(out)
 
 
-def convert(raster: bytes, settings: Settings, out: BinaryIO,
-            log: BinaryIO | None = None) -> int:
+def convert(
+    raster: bytes, settings: Settings, out: BinaryIO, log: BinaryIO | None = None
+) -> int:
     """Convert a whole raster stream, writing TSPL to ``out``.
 
     Returns the number of pages emitted.

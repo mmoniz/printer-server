@@ -84,7 +84,7 @@ Use current best practice, verified against sources rather than remembered:
 
 - Before choosing or upgrading a language, framework, library, CI action or tool, check its current stable version and recommended usage in the official docs or release notes. Record significant choices in the owning skill's Decisions, with the source and date.
 - Don't introduce deprecated APIs or patterns. When you come across one, fix it or log it in TECH-DEBT.md.
-- Keep the baseline green: linter, tests, shellcheck, actionlint, the secret scan and the PPD staleness check pass in CI on every PR. Toolchain versions are pinned (`.python-version`), `uv.lock` is committed, and dependency updates are automated with Dependabot.
+- Keep the baseline green: formatter, linter, type checker, tests, shellcheck, actionlint, the secret scan and the PPD staleness check pass in CI on every PR. Toolchain versions are pinned (`.python-version`), `uv.lock` is committed, and dependency updates are automated with Dependabot.
 - No magic numbers or strings. A literal whose meaning isn't obvious where it's used gets a name, defined once next to the code that owns it: a constant, an enum member, or a table. `0`, `1`, `""`, user-facing text and expected values in tests stay inline. `ruff check .` enforces this for the Python (`PLR2004`, strings included); for shell, CI YAML and the systemd units, apply it by hand.
 - **The Pi 2 constrains dependencies.** armv7, 32-bit, 1 GB RAM, and the venv reuses apt's numpy/Pillow builds (`--system-site-packages`) rather than compiling from source. Before adding a runtime dependency, confirm it ships an armv7 wheel or an apt package, then add it to **both** `requirements.txt` (what the Pi installs) and `pyproject.toml` (what `uv.lock` is built from); `tests/test_dependencies.py` fails if they differ. See `pi-deployment`.
 - Keep secrets out of the repo. Validate input at trust boundaries. Give CI tokens and services the least privilege they need.
@@ -111,7 +111,9 @@ Log known shortcuts and deferred fixes in `TECH-DEBT.md`, not as TODOs in code. 
 uv sync                                              # create .venv on the pinned Python (3.11) from uv.lock
 uv run pytest                                        # full suite, no printer or Pi needed
 uv run pytest tests/test_normalize.py                # one file
+uv run ruff format .                                 # format (CI runs it with --check)
 uv run ruff check .                                  # lint, including magic values
+uv run mypy                                          # typecheck (config in pyproject.toml)
 shellcheck -S warning scripts/*.sh                   # required before touching scripts/
 python3 scripts/make_ppd.py && git diff --exit-code cups/LabelPrinter.ppd  # PPD staleness check
 actionlint                                           # workflows
@@ -124,4 +126,4 @@ Run the web app locally against a real or fake queue:
 LABELSERVER_QUEUE=my_queue uv run python -m flask --app labelserver.app run --port 8080
 ```
 
-CI (`.github/workflows/ci.yml`) runs the TDD check, the PR-title check, the UI-evidence check, a secret scan, and a `build` job (actionlint, ruff, pytest, shellcheck, the PPD staleness check). All of it should pass locally before pushing.
+CI (`.github/workflows/ci.yml`) runs the TDD check, the PR-title check, the UI-evidence check, a secret scan, and a `build` job (actionlint, ruff format and lint, mypy, pytest, shellcheck, the PPD staleness check). All of it should pass locally before pushing.

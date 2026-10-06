@@ -28,8 +28,10 @@ def ink_coverage(pdf_bytes):
 
 # --- output geometry -----------------------------------------------------
 
-@pytest.mark.parametrize("fixture", ["label_4x6", "letter_with_label",
-                                     "landscape_label"])
+
+@pytest.mark.parametrize(
+    "fixture", ["label_4x6", "letter_with_label", "landscape_label"]
+)
 def test_output_is_always_4x6(fixture, request):
     data = request.getfixturevalue(fixture)
     out, _ = normalize.normalize_pdf(data)
@@ -133,6 +135,7 @@ def test_real_ups_multiband_label_is_not_rotated_sideways():
 
 # --- modes ---------------------------------------------------------------
 
+
 def test_fit_mode_never_crops(letter_with_label):
     out, result = normalize.normalize_pdf(letter_with_label, mode=Mode.FIT)
 
@@ -155,6 +158,7 @@ def test_auto_mode_skips_crop_at_high_coverage(label_4x6):
 
 # --- ink detection -------------------------------------------------------
 
+
 def test_label_is_found_despite_fold_line_and_terms(letter_with_label):
     """The distractors carriers print must not widen the crop."""
     _, result = normalize.normalize_pdf(letter_with_label)
@@ -163,8 +167,9 @@ def test_label_is_found_despite_fold_line_and_terms(letter_with_label):
     width, height = x1 - x0, y1 - y0
     slack = 2 * normalize.CROP_PADDING + 2
 
-    assert width == pytest.approx(288, abs=slack), \
+    assert width == pytest.approx(288, abs=slack), (
         "crop grew sideways - the full-width fold line was included"
+    )
     assert height == pytest.approx(432, abs=slack)
     assert result.label_shaped
 
@@ -215,8 +220,9 @@ def test_label_shape_beats_raw_size():
     label = (0, 0, 288, 432)  # 124k, label-shaped
     blob = (0, 0, 380, 380)  # 144k, not label-shaped
 
-    assert normalize._score_block(label, page_area) > \
-        normalize._score_block(blob, page_area)
+    assert normalize._score_block(label, page_area) > normalize._score_block(
+        blob, page_area
+    )
 
 
 def test_find_ink_bbox_locates_a_block():
@@ -242,6 +248,7 @@ def test_label_shape_detection():
 
 
 # --- uploads and errors --------------------------------------------------
+
 
 def test_normalize_upload_accepts_png():
     from PIL import Image
@@ -291,6 +298,7 @@ def test_result_describes_itself(letter_with_label):
 
 
 # --- preview -------------------------------------------------------------
+
 
 def test_render_preview_produces_a_png(label_4x6):
     png = normalize.render_preview(label_4x6, width_px=200)

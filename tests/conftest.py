@@ -46,22 +46,30 @@ def letter_with_label():
     bounding box swallows them and crops to most of the page.
     """
     label_bottom = 792 - 36 - 432
-    return make_pdf(612, 792, [
-        (36, label_bottom, 288, 432),  # the label itself
-        (36, label_bottom - 48, 540, 1),  # full-width fold line
-        (36, 120, 400, 8),  # terms text down in the footer
-        (36, 100, 360, 8),
-    ])
+    return make_pdf(
+        612,
+        792,
+        [
+            (36, label_bottom, 288, 432),  # the label itself
+            (36, label_bottom - 48, 540, 1),  # full-width fold line
+            (36, 120, 400, 8),  # terms text down in the footer
+            (36, 100, 360, 8),
+        ],
+    )
 
 
 @pytest.fixture
 def letter_label_bottom_right():
     """Same idea, but the label is in the bottom-right corner."""
-    return make_pdf(612, 792, [
-        (612 - 36 - 288, 36, 288, 432),
-        (36, 700, 540, 1),
-        (36, 660, 300, 8),
-    ])
+    return make_pdf(
+        612,
+        792,
+        [
+            (612 - 36 - 288, 36, 288, 432),
+            (36, 700, 540, 1),
+            (36, 660, 300, 8),
+        ],
+    )
 
 
 @pytest.fixture

@@ -16,19 +16,25 @@ import pytest
 from labelserver import mail as mail_module
 from labelserver.mail import MailConfig, MailError, fetch_new, parse_message
 
-CONFIG = MailConfig(host="imap.example.com", username="labels@example.com",
-                    password="app-password")
+CONFIG = MailConfig(
+    host="imap.example.com", username="labels@example.com", password="app-password"
+)
 
 
 # --- parse_message ---------------------------------------------------------
+
 
 def test_extracts_a_pdf_attachment():
     msg = EmailMessage()
     msg["From"] = "Amazon <ship-confirm@amazon.com>"
     msg["Subject"] = "Your return label"
     msg.set_content("Here's your label.")
-    msg.add_attachment(b"%PDF-1.4 fake", maintype="application",
-                       subtype="pdf", filename="ShipperLabel.pdf")
+    msg.add_attachment(
+        b"%PDF-1.4 fake",
+        maintype="application",
+        subtype="pdf",
+        filename="ShipperLabel.pdf",
+    )
 
     parsed = parse_message(bytes(msg))
 
@@ -44,8 +50,9 @@ def test_extracts_an_image_attachment():
     msg["From"] = "friend@example.com"
     msg["Subject"] = "label"
     msg.set_content("see attached")
-    msg.add_attachment(b"\x89PNG fake", maintype="image", subtype="png",
-                       filename="label.png")
+    msg.add_attachment(
+        b"\x89PNG fake", maintype="image", subtype="png", filename="label.png"
+    )
 
     parsed = parse_message(bytes(msg))
     assert parsed.attachments[0].filename == "label.png"
@@ -56,8 +63,9 @@ def test_ignores_non_printable_attachments():
     msg["From"] = "someone@example.com"
     msg["Subject"] = "not a label"
     msg.set_content("body")
-    msg.add_attachment(b"zip bytes", maintype="application",
-                       subtype="zip", filename="archive.zip")
+    msg.add_attachment(
+        b"zip bytes", maintype="application", subtype="zip", filename="archive.zip"
+    )
 
     parsed = parse_message(bytes(msg))
     assert parsed.attachments == []
@@ -87,16 +95,15 @@ def test_multiple_attachments_are_all_extracted():
     msg["From"] = "someone@example.com"
     msg["Subject"] = "two labels"
     msg.set_content("body")
-    msg.add_attachment(b"one", maintype="application", subtype="pdf",
-                       filename="a.pdf")
-    msg.add_attachment(b"two", maintype="image", subtype="jpeg",
-                       filename="b.jpg")
+    msg.add_attachment(b"one", maintype="application", subtype="pdf", filename="a.pdf")
+    msg.add_attachment(b"two", maintype="image", subtype="jpeg", filename="b.jpg")
 
     parsed = parse_message(bytes(msg))
     assert {a.filename for a in parsed.attachments} == {"a.pdf", "b.jpg"}
 
 
 # --- body text (feeds the relevance filter in mailpoll.py) ---------------
+
 
 def test_plain_text_body_is_captured():
     msg = EmailMessage()
@@ -113,8 +120,8 @@ def test_html_only_body_is_stripped_and_captured():
     msg["From"] = "someone@example.com"
     msg["Subject"] = "fyi"
     msg.add_alternative(
-        "<html><body><p>Here is your <b>label</b>.</p></body></html>",
-        subtype="html")
+        "<html><body><p>Here is your <b>label</b>.</p></body></html>", subtype="html"
+    )
 
     parsed = parse_message(bytes(msg))
     assert "label" in parsed.body_text
@@ -149,7 +156,8 @@ def test_script_and_style_content_does_not_leak_into_body_text():
         "<p>Get started with Google on your new device.</p>"
         "<script>document.body.onload = function() { window.print(); };</script>"
         "</body></html>",
-        subtype="html")
+        subtype="html",
+    )
 
     parsed = parse_message(bytes(msg))
 
@@ -161,14 +169,14 @@ def test_no_body_at_all_gives_empty_string():
     msg = EmailMessage()
     msg["From"] = "someone@example.com"
     msg["Subject"] = "fyi"
-    msg.add_attachment(b"data", maintype="application", subtype="pdf",
-                       filename="a.pdf")
+    msg.add_attachment(b"data", maintype="application", subtype="pdf", filename="a.pdf")
 
     parsed = parse_message(bytes(msg))
     assert parsed.body_text == ""
 
 
 # --- fetch_new ---------------------------------------------------------
+
 
 class FakeIMAP:
     """Stand-in for imaplib.IMAP4_SSL."""
@@ -184,6 +192,7 @@ class FakeIMAP:
     def login(self, user, password):
         if self.login_should_fail:
             import imaplib
+
             raise imaplib.IMAP4.error("bad credentials")
 
     def select(self, folder, readonly=False):
@@ -240,6 +249,7 @@ def test_fetch_new_reports_a_folder_that_will_not_open(fake_imap):
 def test_fetch_new_reports_an_unreachable_host(monkeypatch):
     def boom(host, port):
         raise OSError("no route to host")
+
     monkeypatch.setattr(mail_module.imaplib, "IMAP4_SSL", boom)
 
     with pytest.raises(MailError, match="Could not connect"):

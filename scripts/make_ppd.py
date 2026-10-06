@@ -31,7 +31,7 @@ LABEL_SIZES = [
     ("100x150mm.Fullbleed", 283, 425, "100mm x 150mm"),
 ]
 
-HEADER = '''*PPD-Adobe: "4.3"
+HEADER = """*PPD-Adobe: "4.3"
 *%
 *% PPD for a generic 203dpi USB thermal label printer that speaks TSPL.
 *% The stock vendor driver ships an x86_64-only binary filter, so this PPD
@@ -67,9 +67,9 @@ HEADER = '''*PPD-Adobe: "4.3"
 *cupsUrfSupported: "V1.4,W8,RS203,DM1,CP1"
 
 *OpenGroup: General/General
-'''
+"""
 
-FOOTER = '''*CloseGroup: General/General
+FOOTER = """*CloseGroup: General/General
 
 *DefaultFont: Courier
 *Font Courier: Standard "(1.05)" Standard ROM
@@ -77,14 +77,16 @@ FOOTER = '''*CloseGroup: General/General
 *Font Times-Roman: Standard "(1.05)" Standard ROM
 
 *% End of LabelPrinter.ppd
-'''
+"""
 
 
 def option(name, label, default, choices, order=10):
     """Render one PPD PickOne option block."""
-    out = [f"*OpenUI *{name}/{label}: PickOne",
-           f"*OrderDependency: {order} AnySetup *{name}",
-           f"*Default{name}: {default}"]
+    out = [
+        f"*OpenUI *{name}/{label}: PickOne",
+        f"*OrderDependency: {order} AnySetup *{name}",
+        f"*Default{name}: {default}",
+    ]
     for value, text in choices:
         out.append(f'*{name} {value}/{text}: ""')
     out.append(f"*CloseUI: *{name}")
@@ -97,20 +99,28 @@ def build():
     # --- Media sizes -----------------------------------------------------
     sizes = LABEL_SIZES
 
-    parts.append("*OpenUI *PageSize/Media Size: PickOne\n"
-                 "*OrderDependency: 10 AnySetup *PageSize\n"
-                 f"*DefaultPageSize: {DEFAULT_SIZE}\n")
+    parts.append(
+        "*OpenUI *PageSize/Media Size: PickOne\n"
+        "*OrderDependency: 10 AnySetup *PageSize\n"
+        f"*DefaultPageSize: {DEFAULT_SIZE}\n"
+    )
     for key, w, h, name in sizes:
-        parts.append(f'*PageSize {key}/{name}: '
-                     f'"<</PageSize[{w} {h}]/ImagingBBox null>>setpagedevice"\n')
+        parts.append(
+            f"*PageSize {key}/{name}: "
+            f'"<</PageSize[{w} {h}]/ImagingBBox null>>setpagedevice"\n'
+        )
     parts.append("*CloseUI: *PageSize\n\n")
 
-    parts.append("*OpenUI *PageRegion/Media Size: PickOne\n"
-                 "*OrderDependency: 10 AnySetup *PageRegion\n"
-                 f"*DefaultPageRegion: {DEFAULT_SIZE}\n")
+    parts.append(
+        "*OpenUI *PageRegion/Media Size: PickOne\n"
+        "*OrderDependency: 10 AnySetup *PageRegion\n"
+        f"*DefaultPageRegion: {DEFAULT_SIZE}\n"
+    )
     for key, w, h, name in sizes:
-        parts.append(f'*PageRegion {key}/{name}: '
-                     f'"<</PageSize[{w} {h}]/ImagingBBox null>>setpagedevice"\n')
+        parts.append(
+            f"*PageRegion {key}/{name}: "
+            f'"<</PageSize[{w} {h}]/ImagingBBox null>>setpagedevice"\n'
+        )
     parts.append("*CloseUI: *PageRegion\n\n")
 
     # Thermal labels print edge to edge -- no unprintable margins.
@@ -130,33 +140,58 @@ def build():
         "*OpenUI *Resolution/Resolution: PickOne\n"
         "*OrderDependency: 20 AnySetup *Resolution\n"
         f"*DefaultResolution: {DPI}dpi\n"
-        f'*Resolution {DPI}dpi/{DPI} dpi: '
+        f"*Resolution {DPI}dpi/{DPI} dpi: "
         f'"<</HWResolution[{DPI} {DPI}]/cupsBitsPerColor 8/cupsRowCount 8'
         '/cupsRowFeed 0/cupsRowStep 0/cupsColorSpace 0>>setpagedevice"\n'
         "*CloseUI: *Resolution\n\n"
     )
 
     # --- Printer knobs, read back by rastertotspl ------------------------
-    parts.append(option(
-        "Darkness", "Darkness", "6",
-        [(str(i), str(i)) for i in range(16)], order=30))
+    parts.append(
+        option(
+            "Darkness", "Darkness", "6", [(str(i), str(i)) for i in range(16)], order=30
+        )
+    )
 
-    parts.append(option(
-        "zePrintRate", "Print Speed", "4",
-        [(str(i), f"{i} in/s") for i in (1, 2, 3, 4, 5, 6)], order=30))
+    parts.append(
+        option(
+            "zePrintRate",
+            "Print Speed",
+            "4",
+            [(str(i), f"{i} in/s") for i in (1, 2, 3, 4, 5, 6)],
+            order=30,
+        )
+    )
 
-    parts.append(option(
-        "zeMediaTracking", "Media Tracking", "Gap",
-        [("Gap", "Gap-separated labels"),
-         ("Continuous", "Continuous stock")], order=30))
+    parts.append(
+        option(
+            "zeMediaTracking",
+            "Media Tracking",
+            "Gap",
+            [("Gap", "Gap-separated labels"), ("Continuous", "Continuous stock")],
+            order=30,
+        )
+    )
 
-    parts.append(option(
-        "AdjustHorizontal", "Horizontal Offset (dots)", "0",
-        [(str(v), str(v)) for v in range(-24, 25, 4)], order=40))
+    parts.append(
+        option(
+            "AdjustHorizontal",
+            "Horizontal Offset (dots)",
+            "0",
+            [(str(v), str(v)) for v in range(-24, 25, 4)],
+            order=40,
+        )
+    )
 
-    parts.append(option(
-        "AdjustVertical", "Vertical Offset (dots)", "0",
-        [(str(v), str(v)) for v in range(-24, 25, 4)], order=40))
+    parts.append(
+        option(
+            "AdjustVertical",
+            "Vertical Offset (dots)",
+            "0",
+            [(str(v), str(v)) for v in range(-24, 25, 4)],
+            order=40,
+        )
+    )
 
     parts.append(FOOTER)
     return "".join(parts)
@@ -175,9 +210,11 @@ def main(argv=None):
     # Sanity check the geometry our filter will be handed.
     w, h = 288, 432
     print(f"wrote {dest}")
-    print(f"  default media {DEFAULT_SIZE}: {w}x{h}pt -> "
-          f"{round(w / 72 * DPI)}x{round(h / 72 * DPI)} dots @ {DPI}dpi -> "
-          f"{math.ceil(w * 25.4 / 72)}x{math.ceil(h * 25.4 / 72)}mm")
+    print(
+        f"  default media {DEFAULT_SIZE}: {w}x{h}pt -> "
+        f"{round(w / 72 * DPI)}x{round(h / 72 * DPI)} dots @ {DPI}dpi -> "
+        f"{math.ceil(w * 25.4 / 72)}x{math.ceil(h * 25.4 / 72)}mm"
+    )
     print(f"  {len(LABEL_SIZES)} media sizes")
 
 

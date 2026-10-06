@@ -25,8 +25,16 @@ import time
 from dataclasses import dataclass, field
 from threading import Lock
 
-from flask import (Flask, abort, flash, redirect, render_template, request,
-                   send_file, url_for)
+from flask import (
+    Flask,
+    abort,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
 from . import mail, mailpoll, normalize, printing, urlfetch
 from .mailstore import MailStore
@@ -90,8 +98,7 @@ class PendingStore:
             return self._items.pop(token, None)
 
 
-def create_app(queue: str = printing.DEFAULT_QUEUE,
-              mail_db: str = "mail.db") -> Flask:
+def create_app(queue: str = printing.DEFAULT_QUEUE, mail_db: str = "mail.db") -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     # Only used to sign flash messages on a trusted home LAN.
@@ -108,18 +115,23 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     password = os.environ.get("LABELSERVER_MAIL_PASSWORD")
     if host and user and password:
         mail_config = mail.MailConfig(
-            host=host, username=user, password=password,
+            host=host,
+            username=user,
+            password=password,
             port=int(os.environ.get("LABELSERVER_MAIL_PORT", "993")),
-            folder=os.environ.get("LABELSERVER_MAIL_FOLDER", "INBOX"))
+            folder=os.environ.get("LABELSERVER_MAIL_FOLDER", "INBOX"),
+        )
         stop_event = threading.Event()
         interval = float(os.environ.get("LABELSERVER_MAIL_POLL_SECONDS", "300"))
         auto_print = os.environ.get(
-            "LABELSERVER_MAIL_AUTOPRINT", "").strip().lower() in ("1", "true", "yes")
+            "LABELSERVER_MAIL_AUTOPRINT", ""
+        ).strip().lower() in ("1", "true", "yes")
         thread = threading.Thread(
             target=mailpoll.poll_forever,
             args=(mail_config, mail_store, interval, stop_event),
             kwargs={"auto_print": auto_print, "queue": queue},
-            daemon=True)
+            daemon=True,
+        )
         thread.start()
 
     @app.template_filter("kb")
@@ -144,8 +156,13 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
             current = printing.jobs(app.config[QUEUE_CONFIG])
         except PrintError:
             current = []
-        return render_template("index.html", ready=ready, status=status,
-                               jobs=current, queue=app.config[QUEUE_CONFIG])
+        return render_template(
+            "index.html",
+            ready=ready,
+            status=status,
+            jobs=current,
+            queue=app.config[QUEUE_CONFIG],
+        )
 
     @app.post("/upload")
     def upload():
@@ -167,8 +184,11 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
 
         suffix = os.path.splitext(filename)[1].lower()
         if suffix not in ALLOWED_SUFFIXES:
-            flash(f"{suffix or 'That file type'} is not supported. "
-                  "Upload a PDF or an image.", FLASH_ERROR)
+            flash(
+                f"{suffix or 'That file type'} is not supported. "
+                "Upload a PDF or an image.",
+                FLASH_ERROR,
+            )
             return redirect(url_for("index"))
 
         try:
@@ -178,15 +198,22 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
 
         try:
             pdf, result = normalize.normalize_upload(data, filename, mode=mode)
-            preview = normalize.render_preview(pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX)
+            preview = normalize.render_preview(
+                pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX
+            )
         except NormalizeError as exc:
             flash(str(exc), FLASH_ERROR)
             return redirect(url_for("index"))
 
-        token = store.add(Pending(pdf=pdf, preview=preview,
-                                  filename=filename,
-                                  summary=result.describe(),
-                                  label_shaped=result.label_shaped))
+        token = store.add(
+            Pending(
+                pdf=pdf,
+                preview=preview,
+                filename=filename,
+                summary=result.describe(),
+                label_shaped=result.label_shaped,
+            )
+        )
 
         return redirect(url_for("review", token=token))
 
@@ -198,9 +225,14 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
             return redirect(url_for("index"))
 
         ready, status = queue_banner()
-        return render_template("review.html", token=token, pending=pending,
-                               ready=ready, status=status,
-                               max_copies=MAX_COPIES)
+        return render_template(
+            "review.html",
+            token=token,
+            pending=pending,
+            ready=ready,
+            status=status,
+            max_copies=MAX_COPIES,
+        )
 
     @app.get("/preview/<token>.png")
     def preview(token):
@@ -231,16 +263,23 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
                 darkness_value = None
 
         try:
-            job_id = printing.submit(pending.pdf, queue=app.config[QUEUE_CONFIG],
-                                     title=pending.filename, copies=copies,
-                                     darkness=darkness_value)
+            job_id = printing.submit(
+                pending.pdf,
+                queue=app.config[QUEUE_CONFIG],
+                title=pending.filename,
+                copies=copies,
+                darkness=darkness_value,
+            )
         except PrintError as exc:
             flash(f"Could not print: {exc}", FLASH_ERROR)
             return redirect(url_for("review", token=token))
 
         store.pop(token)
-        flash(f"Sent to the printer ({copies} "
-              f"{'copy' if copies == 1 else 'copies'}, job {job_id}).", FLASH_SUCCESS)
+        flash(
+            f"Sent to the printer ({copies} "
+            f"{'copy' if copies == 1 else 'copies'}, job {job_id}).",
+            FLASH_SUCCESS,
+        )
         return redirect(url_for("index"))
 
     @app.post("/cancel/<job_id>")
@@ -255,10 +294,14 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     @app.get("/admin")
     def admin():
         ready, status = queue_banner()
-        return render_template("admin.html", messages=mail_store.list_messages(),
-                               total_bytes=mail_store.total_bytes(),
-                               mail_configured=mail_config is not None,
-                               ready=ready, status=status)
+        return render_template(
+            "admin.html",
+            messages=mail_store.list_messages(),
+            total_bytes=mail_store.total_bytes(),
+            mail_configured=mail_config is not None,
+            ready=ready,
+            status=status,
+        )
 
     @app.get("/admin/preview/<int:attachment_id>.png")
     def admin_preview(attachment_id):
@@ -274,10 +317,15 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
             flash("That email attachment is gone.", FLASH_ERROR)
             return redirect(url_for("admin"))
 
-        token = store.add(Pending(pdf=record.pdf, preview=record.preview,
-                                  filename=record.filename,
-                                  summary=record.summary,
-                                  label_shaped=record.label_shaped))
+        token = store.add(
+            Pending(
+                pdf=record.pdf,
+                preview=record.preview,
+                filename=record.filename,
+                summary=record.summary,
+                label_shaped=record.label_shaped,
+            )
+        )
         return redirect(url_for("review", token=token))
 
     @app.post("/admin/delete/<int:mail_id>")
@@ -295,20 +343,25 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     @app.get("/healthz")
     def healthz():
         ready, status = queue_banner()
-        return {"ready": ready, "status": status,
-                "queue": app.config[QUEUE_CONFIG]}, (200 if ready else 503)
+        return {"ready": ready, "status": status, "queue": app.config[QUEUE_CONFIG]}, (
+            200 if ready else 503
+        )
 
     @app.errorhandler(413)
     def too_large(_):
-        flash(f"That file is too big (limit "
-              f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB).", FLASH_ERROR)
+        flash(
+            f"That file is too big (limit {MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
+            FLASH_ERROR,
+        )
         return redirect(url_for("index")), 302
 
     return app
 
 
-app = create_app(os.environ.get("LABELSERVER_QUEUE", printing.DEFAULT_QUEUE),
-                 mail_db=os.environ.get("LABELSERVER_MAIL_DB", "mail.db"))
+app = create_app(
+    os.environ.get("LABELSERVER_QUEUE", printing.DEFAULT_QUEUE),
+    mail_db=os.environ.get("LABELSERVER_MAIL_DB", "mail.db"),
+)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)

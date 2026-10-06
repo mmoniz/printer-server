@@ -79,7 +79,7 @@ CI's `ui-evidence` check (`.github/scripts/ui-evidence-check.sh`) fails a PR tha
 ## Engineering baseline
 
 - Pin toolchain versions (`.python-version`, which is 3.11 because that's what the Pi runs) and commit lockfiles.
-- The formatter, linter, type checker and tests all pass in CI. Run them locally with `uv sync --locked`, `uv run ruff check .` and `uv run pytest`.
+- The formatter, linter, type checker and tests all pass in CI. Run them locally with `uv sync --locked`, `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy` and `uv run pytest`.
 - No magic numbers or strings: name any literal whose meaning isn't obvious where it's used, and define it once. The linter's magic-value rules (ruff's `PLR2004`, with strings included) enforce it in CI. Tests are exempt, because their expected values are the spec.
 - Dependency updates arrive through Dependabot. Review and merge them promptly.
 - Before adopting or upgrading a tool, check its current stable version in the official docs, then record the choice in the owning skill's Decisions.

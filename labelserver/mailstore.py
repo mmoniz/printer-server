@@ -77,7 +77,8 @@ class MailStore:
     def get_watermark(self, key: str) -> int:
         with self._lock:
             row = self._conn.execute(
-                "SELECT value FROM state WHERE key = ?", (key,)).fetchone()
+                "SELECT value FROM state WHERE key = ?", (key,)
+            ).fetchone()
             return int(row[0]) if row else 0
 
     def set_watermark(self, key: str, uid: int) -> None:
@@ -85,24 +86,35 @@ class MailStore:
             self._conn.execute(
                 "INSERT INTO state (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, str(uid)))
+                (key, str(uid)),
+            )
             self._conn.commit()
 
-    def add_message(self, sender: str, subject: str, note: str,
-                    attachments: list[dict]) -> int:
+    def add_message(
+        self, sender: str, subject: str, note: str, attachments: list[dict]
+    ) -> int:
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO messages (sender, subject, received_at, note) "
                 "VALUES (?, ?, ?, ?)",
-                (sender, subject, time.time(), note))
+                (sender, subject, time.time(), note),
+            )
             message_id = cur.lastrowid
+            assert message_id is not None  # an INSERT always sets it
             for att in attachments:
                 self._conn.execute(
                     "INSERT INTO attachments "
                     "(message_id, filename, pdf, preview, summary, label_shaped) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (message_id, att["filename"], att["pdf"], att["preview"],
-                     att["summary"], int(att["label_shaped"])))
+                    (
+                        message_id,
+                        att["filename"],
+                        att["pdf"],
+                        att["preview"],
+                        att["summary"],
+                        int(att["label_shaped"]),
+                    ),
+                )
             self._conn.commit()
             return message_id
 
@@ -110,32 +122,51 @@ class MailStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, sender, subject, received_at, note FROM messages "
-                "ORDER BY received_at DESC").fetchall()
+                "ORDER BY received_at DESC"
+            ).fetchall()
             result = []
             for mid, sender, subject, received_at, note in rows:
                 att_rows = self._conn.execute(
                     "SELECT id, filename, summary, label_shaped FROM attachments "
-                    "WHERE message_id = ? ORDER BY id", (mid,)).fetchall()
+                    "WHERE message_id = ? ORDER BY id",
+                    (mid,),
+                ).fetchall()
                 attachments = [
-                    AttachmentSummary(id=a_id, filename=fn, summary=summ,
-                                      label_shaped=bool(shaped))
+                    AttachmentSummary(
+                        id=a_id, filename=fn, summary=summ, label_shaped=bool(shaped)
+                    )
                     for a_id, fn, summ, shaped in att_rows
                 ]
-                result.append(MailSummary(id=mid, sender=sender, subject=subject,
-                                          received_at=received_at, note=note,
-                                          attachments=attachments))
+                result.append(
+                    MailSummary(
+                        id=mid,
+                        sender=sender,
+                        subject=subject,
+                        received_at=received_at,
+                        note=note,
+                        attachments=attachments,
+                    )
+                )
             return result
 
     def get_attachment(self, attachment_id: int) -> AttachmentRecord | None:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, filename, pdf, preview, summary, label_shaped "
-                "FROM attachments WHERE id = ?", (attachment_id,)).fetchone()
+                "FROM attachments WHERE id = ?",
+                (attachment_id,),
+            ).fetchone()
             if row is None:
                 return None
             a_id, fn, pdf, preview, summary, shaped = row
-            return AttachmentRecord(id=a_id, filename=fn, pdf=pdf, preview=preview,
-                                    summary=summary, label_shaped=bool(shaped))
+            return AttachmentRecord(
+                id=a_id,
+                filename=fn,
+                pdf=pdf,
+                preview=preview,
+                summary=summary,
+                label_shaped=bool(shaped),
+            )
 
     def delete_message(self, message_id: int) -> None:
         with self._lock:
@@ -151,5 +182,6 @@ class MailStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT COALESCE(SUM(LENGTH(pdf) + LENGTH(preview)), 0) "
-                "FROM attachments").fetchone()
+                "FROM attachments"
+            ).fetchone()
             return row[0]
