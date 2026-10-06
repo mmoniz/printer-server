@@ -231,6 +231,12 @@ def test_fetch_new_reports_a_login_failure(fake_imap):
         fetch_new(CONFIG, since_uid=0)
 
 
+def test_fetch_new_reports_a_folder_that_will_not_open(fake_imap):
+    fake_imap.select_should_fail = True
+    with pytest.raises(MailError, match="Could not open the"):
+        fetch_new(CONFIG, since_uid=0)
+
+
 def test_fetch_new_reports_an_unreachable_host(monkeypatch):
     def boom(host, port):
         raise OSError("no route to host")

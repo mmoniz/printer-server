@@ -78,7 +78,7 @@ def poll_once(config: MailConfig, store: MailStore, *,
             try:
                 pdf, result = normalize.normalize_upload(
                     att.data, att.filename, mode=Mode.AUTO)
-                preview = normalize.render_preview(pdf, width_px=420)
+                preview = normalize.render_preview(pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX)
             except NormalizeError as exc:
                 problems.append(f"{att.filename}: {exc}")
                 continue

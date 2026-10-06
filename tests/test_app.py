@@ -9,7 +9,6 @@ import io
 
 import pytest
 
-from conftest import make_pdf
 from labelserver import app as app_module
 from labelserver import printing
 from labelserver.printing import Job, PrintError

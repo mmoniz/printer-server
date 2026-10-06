@@ -1,41 +1,147 @@
-name: tests
+# CI for every PR into the default branch, and again on every push to it.
+#
+# The job ids `tdd`, `pr-title`, `ui-evidence`, `secrets` and `build` are the status-check
+# names the default-branch ruleset requires; keep them stable.
+#
+# No `paths:` filters: a required check from a path-filtered workflow never
+# reports on PRs that don't match, and the PR waits forever. Skip work inside
+# a job with `if:` instead.
+#
+# The push to the default branch reruns everything, because two PRs can each
+# pass alone and still conflict once both merge (e.g. two migrations off the
+# same parent). The ruleset's up-to-date requirement narrows that window;
+# this run closes it.
+#
+# Pin every action to the full commit SHA of its current release, with a version
+# comment. Look them up, don't guess. Dependabot (github-actions) keeps them current.
+name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
-  workflow_dispatch:
+    types: [opened, edited, synchronize, reopened]  # `edited` rechecks a retitled or redescribed PR
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a PR cancels that PR's older runs. Runs on the default branch
+  # get a unique group (run_id), so back-to-back merges never cancel each other.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
+  tdd:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5  # a git diff and a file walk; anything longer is a hang
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.11"  # matches Raspberry Pi OS Bookworm
-          cache: pip
-
-      - name: Install dependencies
+          fetch-depth: 0
+      - run: .github/scripts/tdd-check.sh "origin/${GITHUB_BASE_REF}"
+      - name: Summary
+        if: failure()
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          {
+            echo "### TDD check failed"
+            echo "Source changed with no test changes. Reproduce locally: \`.github/scripts/tdd-check.sh\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2  # one regex
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}  # via env, never inline: titles are untrusted
+        run: .github/scripts/commit-check.sh --title "$PR_TITLE"
+
+  ui-evidence:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2  # a git diff and a grep of the PR body
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - env:
+          PR_BODY: ${{ github.event.pull_request.body }}  # via env, never inline: descriptions are untrusted
+        run: |
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          .github/scripts/ui-evidence-check.sh --body-file "$RUNNER_TEMP/pr-body.md" "origin/${GITHUB_BASE_REF}"
+      - name: Summary
+        if: failure()
+        run: |
+          {
+            echo "### UI changed without before and after screenshots"
+            echo "Fill the PR description's Screenshots section, then edit the PR to rerun. See CONTRIBUTING.md, UI changes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5  # scanning the working tree takes seconds
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: gitleaks (working tree)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          # Scans the checked-out files, not history. Leaks already in history
+          # are handled by rotating the credential, not by keeping CI red forever.
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL "$url" | tar -xz -C "$RUNNER_TEMP" gitleaks
+          args=()
+          [ -f .gitleaks.toml ] && args=(--config .gitleaks.toml)
+          "$RUNNER_TEMP/gitleaks" dir --redact --exit-code 1 --no-banner "${args[@]}" .
+      - name: Summary
+        if: failure()
+        run: |
+          {
+            echo "### Secret scan failed"
+            echo "Rotate the credential first; deleting it from the file doesn't remove it from history."
+            echo "False positive? Add a commented entry to \`.gitleaks.toml\`. Reproduce: \`gitleaks dir --redact .\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # the suite runs in about 15s; the rest is apt and a cold uv cache: measure a warm run and leave headroom for a cold cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Lint workflows (actionlint)
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          # Checks workflow syntax, expressions and job references, and runs the
+          # runner's preinstalled shellcheck on every run: block.
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL "$url" | tar -xz -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+      - name: Install from the lockfile
+        # uv reads the Python version from .python-version (3.11, what the Pi runs).
+        run: uv sync --locked
+      - name: Lint (ruff, including magic values)
+        run: uv run ruff check .
       - name: Install CUPS tooling
         # cupstestppd validates the PPD; the rest of the suite stubs CUPS out.
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cups-ppdc
-
-      - name: Run tests
-        run: pytest -v
-
+      - name: Test
+        run: uv run pytest -v
       - name: Check shell scripts
-        run: |
-          sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck -S warning scripts/*.sh
-
+        run: shellcheck -S warning scripts/*.sh
       - name: Check the PPD is not stale
         run: |
-          python3 scripts/make_ppd.py
+          uv run python scripts/make_ppd.py
           git diff --exit-code cups/LabelPrinter.ppd
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Build: ${{ job.status }}"
+            echo "Reproduce locally: \`uv sync --locked && uv run ruff check . && uv run pytest\`"
+          } >> "$GITHUB_STEP_SUMMARY"

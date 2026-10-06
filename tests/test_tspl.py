@@ -9,6 +9,7 @@ matching these byte for byte, we have broken compatibility with the printer.
 
 import gzip
 import io
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -105,6 +106,14 @@ def test_settings_copies_reach_print_command():
 def test_rejects_non_raster_input():
     with pytest.raises(tspl.RasterError, match="CUPS raster"):
         list(tspl.read_pages(b"%PDF-1.4 this is not a raster"))
+
+
+def test_rejects_a_raster_that_is_not_8_bits_per_pixel():
+    raster = bytearray(load("golden_2x1", "ras"))
+    # 4 bytes of sync word, then the page header; bitsPerPixel sits at a fixed offset.
+    struct.pack_into("<I", raster, 4 + tspl._F_BITS_PER_PIXEL, 16)
+    with pytest.raises(tspl.RasterError, match="8 bits per pixel"):
+        list(tspl.read_pages(bytes(raster)))
 
 
 def test_rejects_truncated_raster():

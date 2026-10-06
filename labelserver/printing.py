@@ -16,6 +16,14 @@ from dataclasses import dataclass
 DEFAULT_QUEUE = "labels"
 TIMEOUT = 20  # seconds; CUPS is local, so anything slower is a hang
 
+# Fragments of CUPS's own wording that we match on (lowercased stderr / lpstat output).
+QUEUE_MISSING_MARKERS = ("unknown destination", "does not exist")
+NOT_ACCEPTING_MARKER = "not accepting"
+IDLE_MARKER = "is idle"
+PRINTING_MARKER = "now printing"
+DISABLED_MARKER = "disabled"
+LPSTAT_JOB_FIELDS = 4  # id, user, size, then the rest of the line is the date
+
 
 class PrintError(Exception):
     """A print command failed."""
@@ -76,12 +84,12 @@ def submit(pdf: bytes, queue: str = DEFAULT_QUEUE, title: str = "label",
 def _explain(stderr: str, queue: str) -> str:
     """Turn CUPS's terser errors into something a family member can act on."""
     lowered = stderr.lower()
-    if "unknown destination" in lowered or "does not exist" in lowered:
+    if any(marker in lowered for marker in QUEUE_MISSING_MARKERS):
         return (
             f"the '{queue}' print queue does not exist on this machine -- "
             "run scripts/install.sh to create it"
         )
-    if "not accepting" in lowered:
+    if NOT_ACCEPTING_MARKER in lowered:
         return f"the '{queue}' queue is rejecting jobs (cupsenable {queue} to resume)"
     return stderr or "lp failed without saying why"
 
@@ -95,8 +103,8 @@ def jobs(queue: str = DEFAULT_QUEUE) -> list[Job]:
     out = []
     for line in proc.stdout.decode(errors="replace").splitlines():
         # e.g. "labels-7   mike   12288   Sat 09 Aug 2026 08:15:02 PM EDT"
-        parts = line.split(None, 3)
-        if len(parts) == 4 and parts[0].startswith(queue):
+        parts = line.split(None, LPSTAT_JOB_FIELDS - 1)
+        if len(parts) == LPSTAT_JOB_FIELDS and parts[0].startswith(queue):
             out.append(Job(id=parts[0], user=parts[1], size=parts[2],
                            submitted=parts[3]))
     return out
@@ -122,8 +130,8 @@ def queue_state(queue: str = DEFAULT_QUEUE) -> tuple[bool, str]:
         return False, f"queue '{queue}' not found"
 
     first = text.splitlines()[0]
-    ready = "is idle" in first or "now printing" in first
-    if "disabled" in first:
+    ready = IDLE_MARKER in first or PRINTING_MARKER in first
+    if DISABLED_MARKER in first:
         return False, first
     return ready, first
 

@@ -21,6 +21,7 @@ from urllib.parse import urljoin, urlparse
 
 USER_AGENT = "labelserver/1.0 (+https://github.com/mmoniz/printer-server)"
 CONNECT_TIMEOUT = 10
+HTML_CONTENT_TYPE = "text/html"
 MAX_REDIRECTS = 5
 
 # Keyed by the response's Content-Type so a generic filename in the URL
@@ -105,7 +106,7 @@ def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
             content_type = response.headers.get_content_type()
             suffix = CONTENT_TYPE_SUFFIXES.get(content_type)
             if suffix is None:
-                if content_type == "text/html":
+                if content_type == HTML_CONTENT_TYPE:
                     # The most common reason: the link needs an active login
                     # session (Amazon return/shipping labels, for one) and we
                     # got a sign-in page or error page back instead. We have

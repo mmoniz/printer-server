@@ -167,9 +167,9 @@ and **Whole page** modes for when the guess is wrong.
 ## Development
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest
+uv sync              # creates .venv on Python 3.11 (what the Pi runs) from uv.lock
+uv run pytest
+uv run ruff check .
 ```
 
 The tests stub out CUPS, so they run anywhere — no printer needed.
@@ -177,7 +177,7 @@ The tests stub out CUPS, so they run anywhere — no printer needed.
 To run the web app locally against an existing queue:
 
 ```bash
-LABELSERVER_QUEUE=my_queue .venv/bin/python -m flask --app labelserver.app run --port 8080
+LABELSERVER_QUEUE=my_queue uv run python -m flask --app labelserver.app run --port 8080
 ```
 
 ## Troubleshooting

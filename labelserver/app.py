@@ -38,6 +38,10 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 PENDING_TTL_SECONDS = 30 * 60
 MAX_PENDING = 32
 MAX_COPIES = 20
+QUEUE_CONFIG = "QUEUE"  # app.config key holding the CUPS queue name
+# Flash categories; the templates turn them into CSS classes.
+FLASH_ERROR = "error"
+FLASH_SUCCESS = "success"
 
 
 @dataclass
@@ -92,7 +96,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     # Only used to sign flash messages on a trusted home LAN.
     app.secret_key = os.environ.get("LABELSERVER_SECRET", secrets.token_hex(16))
-    app.config["QUEUE"] = queue
+    app.config[QUEUE_CONFIG] = queue
 
     store = PendingStore()
     mail_store = MailStore(mail_db)
@@ -128,7 +132,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
 
     def queue_banner():
         try:
-            ready, status = printing.queue_state(app.config["QUEUE"])
+            ready, status = printing.queue_state(app.config[QUEUE_CONFIG])
         except PrintError as exc:
             return False, str(exc)
         return ready, status
@@ -137,11 +141,11 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     def index():
         ready, status = queue_banner()
         try:
-            current = printing.jobs(app.config["QUEUE"])
+            current = printing.jobs(app.config[QUEUE_CONFIG])
         except PrintError:
             current = []
         return render_template("index.html", ready=ready, status=status,
-                               jobs=current, queue=app.config["QUEUE"])
+                               jobs=current, queue=app.config[QUEUE_CONFIG])
 
     @app.post("/upload")
     def upload():
@@ -155,16 +159,16 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
             try:
                 data, filename = urlfetch.fetch_url(url, MAX_UPLOAD_BYTES)
             except FetchError as exc:
-                flash(str(exc), "error")
+                flash(str(exc), FLASH_ERROR)
                 return redirect(url_for("index"))
         else:
-            flash("Choose a file, or paste a link to one, first.", "error")
+            flash("Choose a file, or paste a link to one, first.", FLASH_ERROR)
             return redirect(url_for("index"))
 
         suffix = os.path.splitext(filename)[1].lower()
         if suffix not in ALLOWED_SUFFIXES:
             flash(f"{suffix or 'That file type'} is not supported. "
-                  "Upload a PDF or an image.", "error")
+                  "Upload a PDF or an image.", FLASH_ERROR)
             return redirect(url_for("index"))
 
         try:
@@ -174,9 +178,9 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
 
         try:
             pdf, result = normalize.normalize_upload(data, filename, mode=mode)
-            preview = normalize.render_preview(pdf, width_px=420)
+            preview = normalize.render_preview(pdf, width_px=normalize.REVIEW_PREVIEW_WIDTH_PX)
         except NormalizeError as exc:
-            flash(str(exc), "error")
+            flash(str(exc), FLASH_ERROR)
             return redirect(url_for("index"))
 
         token = store.add(Pending(pdf=pdf, preview=preview,
@@ -190,7 +194,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     def review(token):
         pending = store.get(token)
         if pending is None:
-            flash("That preview expired. Upload the label again.", "error")
+            flash("That preview expired. Upload the label again.", FLASH_ERROR)
             return redirect(url_for("index"))
 
         ready, status = queue_banner()
@@ -209,7 +213,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     def do_print(token):
         pending = store.get(token)
         if pending is None:
-            flash("That preview expired. Upload the label again.", "error")
+            flash("That preview expired. Upload the label again.", FLASH_ERROR)
             return redirect(url_for("index"))
 
         try:
@@ -227,25 +231,25 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
                 darkness_value = None
 
         try:
-            job_id = printing.submit(pending.pdf, queue=app.config["QUEUE"],
+            job_id = printing.submit(pending.pdf, queue=app.config[QUEUE_CONFIG],
                                      title=pending.filename, copies=copies,
                                      darkness=darkness_value)
         except PrintError as exc:
-            flash(f"Could not print: {exc}", "error")
+            flash(f"Could not print: {exc}", FLASH_ERROR)
             return redirect(url_for("review", token=token))
 
         store.pop(token)
         flash(f"Sent to the printer ({copies} "
-              f"{'copy' if copies == 1 else 'copies'}, job {job_id}).", "success")
+              f"{'copy' if copies == 1 else 'copies'}, job {job_id}).", FLASH_SUCCESS)
         return redirect(url_for("index"))
 
     @app.post("/cancel/<job_id>")
     def cancel(job_id):
         try:
-            printing.cancel(job_id, queue=app.config["QUEUE"])
-            flash(f"Cancelled {job_id}.", "success")
+            printing.cancel(job_id, queue=app.config[QUEUE_CONFIG])
+            flash(f"Cancelled {job_id}.", FLASH_SUCCESS)
         except PrintError as exc:
-            flash(f"Could not cancel: {exc}", "error")
+            flash(f"Could not cancel: {exc}", FLASH_ERROR)
         return redirect(url_for("index"))
 
     @app.get("/admin")
@@ -267,7 +271,7 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     def admin_use(attachment_id):
         record = mail_store.get_attachment(attachment_id)
         if record is None:
-            flash("That email attachment is gone.", "error")
+            flash("That email attachment is gone.", FLASH_ERROR)
             return redirect(url_for("admin"))
 
         token = store.add(Pending(pdf=record.pdf, preview=record.preview,
@@ -279,25 +283,25 @@ def create_app(queue: str = printing.DEFAULT_QUEUE,
     @app.post("/admin/delete/<int:mail_id>")
     def admin_delete(mail_id):
         mail_store.delete_message(mail_id)
-        flash("Deleted.", "success")
+        flash("Deleted.", FLASH_SUCCESS)
         return redirect(url_for("admin"))
 
     @app.post("/admin/delete-all")
     def admin_delete_all():
         mail_store.delete_all()
-        flash("Mail history cleared.", "success")
+        flash("Mail history cleared.", FLASH_SUCCESS)
         return redirect(url_for("admin"))
 
     @app.get("/healthz")
     def healthz():
         ready, status = queue_banner()
         return {"ready": ready, "status": status,
-                "queue": app.config["QUEUE"]}, (200 if ready else 503)
+                "queue": app.config[QUEUE_CONFIG]}, (200 if ready else 503)
 
     @app.errorhandler(413)
     def too_large(_):
         flash(f"That file is too big (limit "
-              f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB).", "error")
+              f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB).", FLASH_ERROR)
         return redirect(url_for("index")), 302
 
     return app
